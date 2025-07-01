@@ -7,7 +7,7 @@ interface CityCoordinates {
   city: string;
   state: string;
   zipcode: string;
-  source: 'census' | 'opencage' | 'cache' | 'regional' | 'fallback';
+  source: 'census' | 'opencage' | 'cache' | 'regional' | 'fallback'|'zippopotam';
   cached_date?: string;
 }
 
@@ -19,7 +19,7 @@ interface GeocacheEntry {
 
 // Regional fallback centers for US states
 const REGIONAL_CENTERS: Record<string, CityCoordinates> = {
-  'CA': { latitude: 36.7783, longitude: -119.4179, city: 'California', state: 'CA', zipcode: '', source: 'regional' },
+  'CA': { latitude: 36.7783, longitude: -119.4179, city: 'Sandeep', state: 'CA', zipcode: '', source: 'regional' },
   'TX': { latitude: 31.9686, longitude: -99.9018, city: 'Texas', state: 'TX', zipcode: '', source: 'regional' },
   'NY': { latitude: 40.7128, longitude: -74.0060, city: 'New York', state: 'NY', zipcode: '', source: 'regional' },
   'FL': { latitude: 27.7663, longitude: -82.6404, city: 'Florida', state: 'FL', zipcode: '', source: 'regional' },
@@ -124,35 +124,37 @@ function cacheCoordinates(zipcode: string, coordinates: CityCoordinates): void {
 async function geocodeWithCensus(zipcode: string): Promise<CityCoordinates | null> {
   try {
     const normalizedZip = normalizeZipcode(zipcode);
-    const url = `https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${normalizedZip}&benchmark=2020&format=json`;
-    
+    // const url = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://geocoding.geo.census.gov/geocoder/locations/onelineaddress?address=${normalizedZip}&benchmark=2020&format=json`)}`;
+    const url = `http://api.zippopotam.us/us/${normalizedZip}`;
     console.log(`🏛️ Trying Census API for ${zipcode}`);
     
     const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
+  method: 'GET',
+  headers: {
+    'Accept': 'application/json'
+  }
+});
 
-    if (!response.ok) {
-      throw new Error(`Census API error: ${response.status}`);
-    }
+if (!response.ok) {
+  throw new Error(`Census API error: ${response.status}`);
+}
 
-    const data = await response.json();
+const proxyData = await response.json();
+const data = JSON.parse(proxyData.contents); // Extract the actual data from proxy
     
-    if (data.result?.addressMatches && data.result.addressMatches.length > 0) {
-      const match = data.result.addressMatches[0];
-      const coords = match.coordinates;
-      const address = match.addressComponents;
+    if (data.places?.latitude && data.places.latitude.length > 0) {
+      //const match = data.result.addressMatches[0];
+      const coordslt = data.places.latitude;
+      const coordslng =data.places.longitude
+      //const address = match.addressComponents;
 
       const result: CityCoordinates = {
-        latitude: parseFloat(coords.y),
-        longitude: parseFloat(coords.x),
-        city: address.city || 'Unknown City',
-        state: address.state || 'Unknown State',
+        latitude: parseFloat(coordslt),
+        longitude: parseFloat(coordslng),
+        city: data.places.state || 'Unknown City',
+        state: data.places.state || 'Unknown State',
         zipcode: normalizedZip,
-        source: 'census'
+        source: 'zippopotam'
       };
 
       console.log(`✅ Census API success:`, result);

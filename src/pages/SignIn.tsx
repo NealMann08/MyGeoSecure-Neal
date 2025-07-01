@@ -120,7 +120,7 @@ import { getCityCoordinatesFromZipcode, validateZipcode } from '../utils/geocodi
 import type { CityCoordinates } from '../utils/geocoding';
 
 // Add this debug line temporarily
-console.log('Geocoding functions loaded:', { getCityCoordinatesFromZipcode, validateZipcode });
+// console.log('Geocoding functions loaded:', { getCityCoordinatesFromZipcode, validateZipcode });
 
 
 interface SignInProps {
@@ -245,7 +245,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
           consentLevel
         };
       }
-
+console.log('userData.basePoint print -->',userData.basePoint);
       // Call backend with enhanced data
       const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
         method: 'POST',
