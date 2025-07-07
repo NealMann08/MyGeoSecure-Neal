@@ -1,112 +1,4 @@
-// // frontend/src/pages/SignIn.tsx - FIXED VERSION
-// import React, { useState } from 'react';
-// import {
-//   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
-//   IonButton, IonInput, IonSelect, IonSelectOption, IonLabel, IonToggle,
-//   IonLoading
-// } from '@ionic/react';
-// import { useHistory } from 'react-router-dom';
-
-// interface SignInProps {
-//   onSignIn: (user: any) => void;
-// }
-
-// const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
-//   const [name, setName] = useState('');
-//   const [role, setRole] = useState('driver');
-//   const [isNewUser, setIsNewUser] = useState(true);
-//   const [error, setError] = useState('');
-//   const [loading, setLoading] = useState(false);
-//   const history = useHistory();
-
-//   const handleAuth = async () => {
-//     if (!name.trim()) {
-//       setError('Name is required');
-//       return;
-//     }
-
-//     setLoading(true);
-//     setError('');
-
-//     try {
-//       const userId = name.trim().toLowerCase().replace(/\s+/g, '-');
-      
-//       const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         body: JSON.stringify({
-//           user_id: userId,
-//           name: name.trim(),
-//           role,
-//           mode: isNewUser ? 'signup' : 'signin'
-//         })
-//       });
-
-//       const data = await res.json();
-//       if (res.status !== 200) {
-//         setError(data.error || 'Something went wrong');
-//         return;
-//       }
-
-//       // FIXED: Pass complete user object with name
-//       onSignIn({ 
-//         userId, 
-//         name: name.trim(), 
-//         role 
-//       });
-      
-//       history.push(`/${role}`);
-//     } catch (err) {
-//       console.error('Auth error:', err);
-//       setError(err instanceof Error ? err.message : 'Authentication failed');
-//     } finally {
-//       setLoading(false);
-//     }
-//   };
-
-//   return (
-//     <IonPage>
-//       <IonHeader>
-//         <IonToolbar>
-//           <IonTitle>{isNewUser ? 'Sign Up' : 'Sign In'}</IonTitle>
-//         </IonToolbar>
-//       </IonHeader>
-//       <IonContent className="ion-padding">
-//         <IonInput
-//           placeholder="Full Name"
-//           value={name}
-//           onIonChange={e => setName(e.detail.value!)}
-//           disabled={loading}
-//         />
-//         <IonSelect value={role} onIonChange={e => setRole(e.detail.value)} disabled={loading}>
-//           <IonSelectOption value="driver">Driver</IonSelectOption>
-//           <IonSelectOption value="provider">Service Provider</IonSelectOption>
-//         </IonSelect>
-
-//         <IonButton expand="block" onClick={handleAuth} disabled={loading || !name.trim()}>
-//           {loading ? 'Please wait...' : (isNewUser ? 'Create Account' : 'Log In')}
-//         </IonButton>
-
-//         <IonLabel className="ion-padding-top">
-//           {isNewUser ? 'Already have an account?' : 'New user?'}
-//         </IonLabel>
-//         <IonToggle
-//           checked={isNewUser}
-//           onIonChange={e => setIsNewUser(e.detail.checked)}
-//           disabled={loading}
-//         />
-
-//         {error && <IonLabel color="danger">{error}</IonLabel>}
-        
-//         <IonLoading isOpen={loading} message="Authenticating..." />
-//       </IonContent>
-//     </IonPage>
-//   );
-// };
-
-// export default SignIn;
-
-// frontend/src/pages/SignIn.tsx - Enhanced with Zipcode Support
+// frontend/src/pages/SignIn.tsx - Fixed: Zipcode only for new users, settings for existing
 import React, { useState, useEffect } from 'react';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
@@ -116,12 +8,7 @@ import {
 } from '@ionic/react';
 import { useHistory } from 'react-router-dom';
 import { locationOutline, shieldCheckmarkOutline, alertCircleOutline } from 'ionicons/icons';
-import { getCityCoordinatesFromZipcode, validateZipcode } from '../utils/geocoding';
-import type { CityCoordinates } from '../utils/geocoding';
-
-// Add this debug line temporarily
-// console.log('Geocoding functions loaded:', { getCityCoordinatesFromZipcode, validateZipcode });
-
+import { getCityCoordinatesFromZipcode, validateZipcode, type CityCoordinates } from '../utils/geocoding';
 
 interface SignInProps {
   onSignIn: (user: any) => void;
@@ -159,13 +46,13 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
 
   const history = useHistory();
 
-  // Validate zipcode as user types
+  // Only validate zipcode for NEW DRIVER accounts
   useEffect(() => {
-    if (zipcode.trim()) {
+    if (zipcode.trim() && isNewUser && role === 'driver') {
       const isValid = validateZipcode(zipcode);
       setZipcodeValid(isValid);
       
-      if (isValid && role === 'driver') {
+      if (isValid) {
         // Debounce geocoding
         const timer = setTimeout(async () => {
           await performGeocoding(zipcode);
@@ -179,7 +66,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
       setZipcodeValid(null);
       setBasePoint(null);
     }
-  }, [zipcode, role]);
+  }, [zipcode, role, isNewUser]);
 
   const performGeocoding = async (zip: string) => {
     if (geocoding) return;
@@ -188,10 +75,10 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
     try {
       const coordinates = await getCityCoordinatesFromZipcode(zip);
       setBasePoint(coordinates);
-      console.log('🎯 Base point set:', coordinates);
+      console.log('🎯 Base point set for new user:', coordinates);
     } catch (error) {
       console.error('Geocoding error:', error);
-      setError('Unable to locate city center. Beijing fallback will be used.');
+      setError('Unable to locate city center. Please try a different zipcode.');
     } finally {
       setGeocoding(false);
     }
@@ -203,23 +90,28 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
       return;
     }
 
-    // Driver-specific validations
-    if (role === 'driver') {
-      if (isNewUser && !zipcode.trim()) {
-        setError('Zipcode is required for drivers to set up privacy protection');
+    // NEW DRIVER validation - zipcode required
+    if (isNewUser && role === 'driver') {
+      if (!zipcode.trim()) {
+        setError('Zipcode is required for new driver accounts to set up privacy protection');
         return;
       }
 
-      if (zipcode.trim() && !validateZipcode(zipcode)) {
+      if (!validateZipcode(zipcode)) {
         setError('Please enter a valid US zipcode (e.g., 94583 or 94583-1234)');
         return;
       }
 
-      // Ensure we have base point for drivers with zipcode
-      if (zipcode.trim() && !basePoint) {
+      if (!basePoint) {
         setError('Please wait for location verification to complete');
         return;
       }
+    }
+
+    // EXISTING USER validation - no zipcode required
+    if (!isNewUser && zipcode.trim()) {
+      setError('Existing users should manage zipcode in Settings, not during signin');
+      return;
     }
 
     setLoading(true);
@@ -228,15 +120,15 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
     try {
       const userId = name.trim().toLowerCase().replace(/\s+/g, '-');
       
-      // Prepare enhanced user data
+      // Prepare user data
       const userData: EnhancedUser = {
         userId,
         name: name.trim(),
         role,
       };
 
-      // Add driver-specific data
-      if (role === 'driver' && zipcode.trim()) {
+      // Only add privacy data for NEW drivers
+      if (isNewUser && role === 'driver' && zipcode.trim()) {
         userData.zipcode = zipcode.trim();
         userData.basePoint = basePoint || undefined;
         userData.privacySettings = {
@@ -245,8 +137,15 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
           consentLevel
         };
       }
-console.log('userData.basePoint print -->',userData.basePoint);
-      // Call backend with enhanced data
+
+      console.log('🔐 Auth request:', { 
+        userId, 
+        role, 
+        mode: isNewUser ? 'signup' : 'signin',
+        hasZipcode: !!userData.zipcode 
+      });
+
+      // Call backend
       const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -255,7 +154,7 @@ console.log('userData.basePoint print -->',userData.basePoint);
           name: name.trim(),
           role,
           mode: isNewUser ? 'signup' : 'signin',
-          // Enhanced fields
+          // Only send zipcode data for new users
           zipcode: userData.zipcode,
           base_point: userData.basePoint,
           privacy_settings: userData.privacySettings
@@ -268,7 +167,7 @@ console.log('userData.basePoint print -->',userData.basePoint);
         return;
       }
 
-      // Store enhanced user data locally
+      // Store user data locally
       const enhancedUserData = {
         userId,
         name: name.trim(),
@@ -281,7 +180,7 @@ console.log('userData.basePoint print -->',userData.basePoint);
 
       localStorage.setItem('privacyDriveUser', JSON.stringify(enhancedUserData));
       
-      console.log('✅ Enhanced user authenticated:', enhancedUserData);
+      console.log('✅ User authenticated:', enhancedUserData);
       onSignIn(enhancedUserData);
       history.push(`/${role}`);
 
@@ -304,15 +203,25 @@ console.log('userData.basePoint print -->',userData.basePoint);
     if (!name.trim()) return false;
     if (loading || geocoding) return false;
     
-    if (role === 'driver') {
-      if (isNewUser) {
-        return zipcode.trim() && zipcodeValid && basePoint;
-      } else {
-        return !zipcode.trim() || (zipcodeValid && basePoint);
-      }
+    if (isNewUser && role === 'driver') {
+      // New drivers need valid zipcode
+      return zipcode.trim() && zipcodeValid && basePoint;
+    } else {
+      // Existing users and providers just need name
+      return true;
     }
-    
-    return true;
+  };
+
+  const handleToggleUserType = () => {
+    setIsNewUser(!isNewUser);
+    setShowPrivacySettings(false);
+    setError('');
+    // Clear zipcode fields when switching to existing user
+    if (isNewUser) {
+      setZipcode('');
+      setBasePoint(null);
+      setZipcodeValid(null);
+    }
   };
 
   return (
@@ -354,8 +263,8 @@ console.log('userData.basePoint print -->',userData.basePoint);
           </IonCardContent>
         </IonCard>
 
-        {/* Driver Privacy Setup */}
-        {role === 'driver' && (
+        {/* Driver Privacy Setup - ONLY for NEW users */}
+        {isNewUser && role === 'driver' && (
           <IonCard>
             <IonCardHeader>
               <IonCardTitle>
@@ -375,7 +284,7 @@ console.log('userData.basePoint print -->',userData.basePoint);
                   value={zipcode}
                   onIonChange={e => setZipcode(e.detail.value!)}
                   disabled={loading || geocoding}
-                  required={isNewUser}
+                  required
                 />
                 {zipcodeValid === true && (
                   <IonIcon icon={shieldCheckmarkOutline} color="success" slot="end" />
@@ -403,23 +312,19 @@ console.log('userData.basePoint print -->',userData.basePoint);
                   
                   <IonText>
                     <p style={{ fontSize: '0.9em', color: 'var(--ion-color-medium)', marginTop: '8px' }}>
-                      Source: {basePoint.source === 'census' ? 'US Census' : 
-                               basePoint.source === 'opencage' ? 'OpenCage' :
-                               basePoint.source === 'cache' ? 'Cached' :
-                               basePoint.source === 'regional' ? 'Regional Center' : 'Fallback'}
+                      Source: {basePoint.source === 'zippopotam' ? 'Zippopotam API' : 
+                               basePoint.source === 'cache' ? 'Cached' : 'Fallback'}
                     </p>
                   </IonText>
 
-                  {isNewUser && (
-                    <IonButton
-                      fill="outline"
-                      size="small"
-                      onClick={() => setShowPrivacySettings(!showPrivacySettings)}
-                      style={{ marginTop: '10px' }}
-                    >
-                      {showPrivacySettings ? 'Hide' : 'Show'} Privacy Settings
-                    </IonButton>
-                  )}
+                  <IonButton
+                    fill="outline"
+                    size="small"
+                    onClick={() => setShowPrivacySettings(!showPrivacySettings)}
+                    style={{ marginTop: '10px' }}
+                  >
+                    {showPrivacySettings ? 'Hide' : 'Show'} Privacy Settings
+                  </IonButton>
                 </div>
               )}
             </IonCardContent>
@@ -427,7 +332,7 @@ console.log('userData.basePoint print -->',userData.basePoint);
         )}
 
         {/* Privacy Settings (for new driver accounts) */}
-        {role === 'driver' && isNewUser && showPrivacySettings && basePoint && (
+        {isNewUser && role === 'driver' && showPrivacySettings && basePoint && (
           <IonCard>
             <IonCardHeader>
               <IonCardTitle>Privacy Settings</IonCardTitle>
@@ -497,6 +402,17 @@ console.log('userData.basePoint print -->',userData.basePoint);
           </IonCard>
         )}
 
+        {/* Existing User Notice */}
+        {!isNewUser && (
+          <IonCard>
+            <IonCardContent>
+              <IonText>
+                <p><strong>Existing User:</strong> After signing in, you can manage your zipcode and privacy settings from your dashboard.</p>
+              </IonText>
+            </IonCardContent>
+          </IonCard>
+        )}
+
         {/* Authentication Controls */}
         <IonCard>
           <IonCardContent>
@@ -513,11 +429,7 @@ console.log('userData.basePoint print -->',userData.basePoint);
               <IonLabel>{isNewUser ? 'Already have an account?' : 'New user?'}</IonLabel>
               <IonButton 
                 fill="clear" 
-                onClick={() => {
-                  setIsNewUser(!isNewUser);
-                  setShowPrivacySettings(false);
-                  setError('');
-                }}
+                onClick={handleToggleUserType}
                 disabled={loading}
               >
                 {isNewUser ? 'Sign In' : 'Create Account'}
