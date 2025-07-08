@@ -105,14 +105,15 @@ function cacheCoordinates(zipcode: string, coordinates: CityCoordinates): void {
 }
 
 /**
- * Geocode using Zippopotam.us API (Primary - Free, No CORS issues)
+ * DEBUG VERSION: Geocode using Zippopotam.us API with detailed logging
  */
-async function geocodeWithZippopotam(zipcode: string): Promise<CityCoordinates | null> {
+async function geocodeWithZippopotamDebug(zipcode: string): Promise<CityCoordinates | null> {
   try {
     const normalizedZip = normalizeZipcode(zipcode);
     const url = `http://api.zippopotam.us/us/${normalizedZip}`;
     
-    console.log(`🌐 Getting exact coordinates for ${zipcode} using Zippopotam API...`);
+    console.log(`🌐 DEBUG: Calling API for ${zipcode}:`);
+    console.log(`🌐 DEBUG: URL: ${url}`);
     
     const response = await fetch(url, {
       method: 'GET',
@@ -121,14 +122,19 @@ async function geocodeWithZippopotam(zipcode: string): Promise<CityCoordinates |
       }
     });
 
+    console.log(`🌐 DEBUG: Response status: ${response.status}`);
+    console.log(`🌐 DEBUG: Response ok: ${response.ok}`);
+
     if (!response.ok) {
       throw new Error(`Zippopotam API error: ${response.status}`);
     }
 
     const data = await response.json();
+    console.log(`🔍 DEBUG: Raw API response for ${zipcode}:`, JSON.stringify(data, null, 2));
     
     if (data.places && data.places.length > 0) {
       const place = data.places[0];
+      console.log(`🔍 DEBUG: First place object:`, JSON.stringify(place, null, 2));
 
       const result: CityCoordinates = {
         latitude: parseFloat(place.latitude),
@@ -139,15 +145,15 @@ async function geocodeWithZippopotam(zipcode: string): Promise<CityCoordinates |
         source: 'zippopotam'
       };
 
-      console.log(`✅ Found exact city center for ${zipcode}: ${result.city}, ${result.state} (${result.latitude}, ${result.longitude})`);
+      console.log(`✅ DEBUG: Final parsed result for ${zipcode}:`, JSON.stringify(result, null, 2));
       return result;
     }
 
-    console.log(`❌ Zippopotam API: No results for ${zipcode}`);
+    console.log(`❌ DEBUG: No places found for ${zipcode}`);
     return null;
 
   } catch (error) {
-    console.error(`❌ Zippopotam API error for ${zipcode}:`, error);
+    console.error(`❌ DEBUG: Error for ${zipcode}:`, error);
     return null;
   }
 }
@@ -177,7 +183,7 @@ export async function getCityCoordinatesFromZipcode(zipcode: string): Promise<Ci
 
   // Step 3: Get EXACT coordinates from Zippopotam API
   console.log(`🔄 Looking up exact city center for ${normalizedZip}...`);
-  let coordinates = await geocodeWithZippopotam(normalizedZip);
+  let coordinates = await geocodeWithZippopotamDebug(normalizedZip);
 
   // Step 4: Only use fallback if API completely fails
   if (!coordinates) {
@@ -198,17 +204,7 @@ export async function getCityCoordinatesFromZipcode(zipcode: string): Promise<Ci
   return coordinates;
 }
 
-/**
- * Clear geocoding cache
- */
-export function clearGeocodingCache(): void {
-  try {
-    localStorage.removeItem(GEOCACHE_KEY);
-    console.log('🗑️ Geocoding cache cleared');
-  } catch (error) {
-    console.error('Error clearing geocoding cache:', error);
-  }
-}
+
 
 /**
  * Get cache statistics

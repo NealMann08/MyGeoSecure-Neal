@@ -84,113 +84,116 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
     }
   };
 
-  const handleAuth = async () => {
-    if (!name.trim()) {
-      setError('Name is required');
+// REPLACE your handleAuth function in SignIn.tsx with this:
+
+const handleAuth = async () => {
+  if (!name.trim()) {
+    setError('Name is required');
+    return;
+  }
+
+  // NEW DRIVER validation - zipcode required
+  if (isNewUser && role === 'driver') {
+    if (!zipcode.trim()) {
+      setError('Zipcode is required for new driver accounts to set up privacy protection');
       return;
     }
 
-    // NEW DRIVER validation - zipcode required
-    if (isNewUser && role === 'driver') {
-      if (!zipcode.trim()) {
-        setError('Zipcode is required for new driver accounts to set up privacy protection');
-        return;
-      }
-
-      if (!validateZipcode(zipcode)) {
-        setError('Please enter a valid US zipcode (e.g., 94583 or 94583-1234)');
-        return;
-      }
-
-      if (!basePoint) {
-        setError('Please wait for location verification to complete');
-        return;
-      }
-    }
-
-    // EXISTING USER validation - no zipcode required
-    if (!isNewUser && zipcode.trim()) {
-      setError('Existing users should manage zipcode in Settings, not during signin');
+    if (!validateZipcode(zipcode)) {
+      setError('Please enter a valid US zipcode (e.g., 94583 or 94583-1234)');
       return;
     }
 
-    setLoading(true);
-    setError('');
+    if (!basePoint) {
+      setError('Please wait for location verification to complete');
+      return;
+    }
+  }
 
-    try {
-      const userId = name.trim().toLowerCase().replace(/\s+/g, '-');
-      
-      // Prepare user data
-      const userData: EnhancedUser = {
-        userId,
+  // EXISTING USER validation - no zipcode required
+  if (!isNewUser && zipcode.trim()) {
+    setError('Existing users should manage zipcode in Settings, not during signin');
+    return;
+  }
+
+  setLoading(true);
+  setError('');
+
+  try {
+    const userId = name.trim().toLowerCase().replace(/\s+/g, '-');
+    
+    // Prepare user data
+    const userData: EnhancedUser = {
+      userId,
+      name: name.trim(),
+      role,
+    };
+
+    // Only add privacy data for NEW drivers
+    if (isNewUser && role === 'driver' && zipcode.trim()) {
+      userData.zipcode = zipcode.trim();
+      userData.basePoint = basePoint || undefined;
+      userData.privacySettings = {
+        anonymizationRadius,
+        dataRetentionPeriod,
+        consentLevel
+      };
+    }
+
+    console.log('🔐 Auth request:', {
+      userId,
+      role,
+      mode: isNewUser ? 'signup' : 'signin',
+      hasZipcode: !!userData.zipcode
+    });
+
+    // Call backend
+    const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
         name: name.trim(),
         role,
-      };
-
-      // Only add privacy data for NEW drivers
-      if (isNewUser && role === 'driver' && zipcode.trim()) {
-        userData.zipcode = zipcode.trim();
-        userData.basePoint = basePoint || undefined;
-        userData.privacySettings = {
-          anonymizationRadius,
-          dataRetentionPeriod,
-          consentLevel
-        };
-      }
-
-      console.log('🔐 Auth request:', { 
-        userId, 
-        role, 
         mode: isNewUser ? 'signup' : 'signin',
-        hasZipcode: !!userData.zipcode 
-      });
-
-      // Call backend
-      const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: userId,
-          name: name.trim(),
-          role,
-          mode: isNewUser ? 'signup' : 'signin',
-          // Only send zipcode data for new users
-          zipcode: userData.zipcode,
-          base_point: userData.basePoint,
-          privacy_settings: userData.privacySettings
-        })
-      });
-
-      const data = await res.json();
-      if (res.status !== 200) {
-        setError(data.error || 'Something went wrong');
-        return;
-      }
-
-      // Store user data locally
-      const enhancedUserData = {
-        userId,
-        name: name.trim(),
-        role,
+        // Only send zipcode data for new users
         zipcode: userData.zipcode,
-        basePoint: userData.basePoint,
-        privacySettings: userData.privacySettings,
-        registrationDate: new Date().toISOString()
-      };
+        base_point: userData.basePoint,
+        privacy_settings: userData.privacySettings
+      })
+    });
 
-      localStorage.setItem('privacyDriveUser', JSON.stringify(enhancedUserData));
-      
-      console.log('✅ User authenticated:', enhancedUserData);
-      onSignIn(enhancedUserData);
-      history.push(`/${role}`);
-
-    } catch (err) {
-      console.error('Auth error:', err);
-      setError(err instanceof Error ? err.message : 'Authentication failed');
-    } finally {
-      setLoading(false);
+    const data = await res.json();
+    if (res.status !== 200) {
+      setError(data.error || 'Something went wrong');
+      return;
     }
-  };
+
+    // FIXED: Use returned user data (includes stored zipcode/base point for existing users)
+    const finalUserData = {
+      userId,
+      name: name.trim(),
+      role,
+      // FIXED: For existing users, use their stored data; for new users, use local data
+      zipcode: data.user_data?.zipcode || userData.zipcode,
+      basePoint: data.user_data?.base_point || userData.basePoint,
+      privacySettings: data.user_data?.privacy_settings || userData.privacySettings,
+      registrationDate: data.user_data?.created_at || new Date().toISOString()
+    };
+
+    localStorage.setItem('privacyDriveUser', JSON.stringify(finalUserData));
+    
+    console.log('✅ User authenticated with complete data:', finalUserData);
+    onSignIn(finalUserData);
+    history.push(`/${role}`);
+
+  } catch (err) {
+    console.error('Auth error:', err);
+    setError(err instanceof Error ? err.message : 'Authentication failed');
+  } finally {
+    setLoading(false);
+  }
+};
 
   const getPrivacyImpactText = () => {
     if (!basePoint) return 'Location not verified';
@@ -371,24 +374,7 @@ const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
                 </IonSelect>
               </IonItem>
 
-              <IonItem>
-                <IonLabel>
-                  <h3>Data Sharing Level</h3>
-                  <p>
-                    {consentLevel === 'full' ? 'Full analytics for best insurance rates' :
-                     consentLevel === 'basic' ? 'Basic analytics only' :
-                     'Minimal data sharing'}
-                  </p>
-                </IonLabel>
-                <IonSelect 
-                  value={consentLevel} 
-                  onIonChange={e => setConsentLevel(e.detail.value)}
-                >
-                  <IonSelectOption value="full">Full Analytics</IonSelectOption>
-                  <IonSelectOption value="basic">Basic Analytics</IonSelectOption>
-                  <IonSelectOption value="minimal">Minimal Data</IonSelectOption>
-                </IonSelect>
-              </IonItem>
+              
 
               <div style={{ marginTop: '15px', padding: '10px', backgroundColor: 'var(--ion-color-light)', borderRadius: '8px' }}>
                 <IonText>

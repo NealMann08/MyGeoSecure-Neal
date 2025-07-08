@@ -1,4 +1,5 @@
-// frontend/src/App.tsx - FIXED VERSION
+// REPLACE your App.tsx with this updated version:
+
 import React, { useState, useEffect } from 'react';
 import { IonApp, IonRouterOutlet, setupIonicReact, IonToast } from '@ionic/react';
 import { IonReactRouter } from '@ionic/react-router';
@@ -25,6 +26,9 @@ interface User {
   userId: string;
   name: string;
   role: 'driver' | 'provider';
+  zipcode?: string;
+  basePoint?: any;
+  privacySettings?: any;
 }
 
 const App: React.FC = () => {
@@ -33,33 +37,55 @@ const App: React.FC = () => {
   const [toastMessage, setToastMessage] = useState('');
   const [isLoading, setIsLoading] = useState(true);
 
-  // Load user from localStorage on app start
-  useEffect(() => {
-    console.log('App: Loading saved user...');
+  // FIXED: Function to reload user data from localStorage
+  const reloadUserData = () => {
     const savedUser = localStorage.getItem('privacyDriveUser');
-    
     if (savedUser) {
       try {
         const parsedUser = JSON.parse(savedUser);
-        console.log('App: Found saved user:', parsedUser);
+        console.log('App: Reloading user data:', parsedUser);
         
-        // Validate user object has required fields
         if (parsedUser.userId && parsedUser.name && parsedUser.role) {
           setUser(parsedUser);
-          console.log('App: User loaded successfully');
-        } else {
-          console.log('App: Invalid user data, clearing localStorage');
-          localStorage.removeItem('privacyDriveUser');
+          console.log('App: User data reloaded successfully');
         }
       } catch (error) {
-        console.error('App: Error parsing saved user:', error);
-        localStorage.removeItem('privacyDriveUser');
+        console.error('App: Error parsing reloaded user:', error);
       }
-    } else {
-      console.log('App: No saved user found');
     }
-    
+  };
+
+  // Load user from localStorage on app start
+  useEffect(() => {
+    console.log('App: Loading saved user...');
+    reloadUserData();
     setIsLoading(false);
+  }, []);
+
+  // FIXED: Listen for localStorage changes (when zipcode gets updated)
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'privacyDriveUser' && e.newValue) {
+        console.log('App: Detected user data change in localStorage');
+        reloadUserData();
+      }
+    };
+
+    // Listen for storage events from other tabs/windows
+    window.addEventListener('storage', handleStorageChange);
+
+    // Custom event for same-tab updates
+    const handleCustomUserUpdate = () => {
+      console.log('App: Detected custom user update event');
+      reloadUserData();
+    };
+
+    window.addEventListener('userDataUpdated', handleCustomUserUpdate);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('userDataUpdated', handleCustomUserUpdate);
+    };
   }, []);
 
   const handleSignIn = (newUser: User) => {
