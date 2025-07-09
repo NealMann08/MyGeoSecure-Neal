@@ -388,16 +388,30 @@ const handleAuth = async () => {
           </IonCard>
         )}
 
-        {/* Existing User Notice */}
-        {!isNewUser && (
-          <IonCard>
-            <IonCardContent>
-              <IonText>
-                <p><strong>Existing User:</strong> After signing in, you can manage your zipcode and privacy settings from your dashboard.</p>
-              </IonText>
-            </IonCardContent>
-          </IonCard>
-        )}
+{/* Existing User Notice - FIXED: Only show for drivers */}
+{!isNewUser && role === 'driver' && (
+  <IonCard>
+    <IonCardContent>
+      <IonText>
+        <p><strong>Existing Driver:</strong> After signing in, you can manage your zipcode and privacy settings from your dashboard.</p>
+      </IonText>
+    </IonCardContent>
+  </IonCard>
+)}
+
+{/* Provider Notice - NEW: Show for providers */}
+{role === 'provider' && (
+  <IonCard>
+    <IonCardHeader>
+      <IonCardTitle>Service Provider Access</IonCardTitle>
+    </IonCardHeader>
+    <IonCardContent>
+      <IonText>
+        <p>As a service provider, you can analyze driver data to assess risk and driving behavior patterns.</p>
+      </IonText>
+    </IonCardContent>
+  </IonCard>
+)}
 
         {/* Authentication Controls */}
         <IonCard>
