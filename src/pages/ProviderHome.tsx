@@ -1,5 +1,5 @@
-// frontend/src/pages/ProviderHome.tsx - FIXED: Proper Industry Integration
-import React, { useState } from 'react';
+// frontend/src/pages/ProviderHome.tsx - FIXED: Input clearing issue + Industry metrics
+import React, { useState, useCallback } from 'react';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
   IonInput, IonButton, IonLabel, IonText, IonCard, IonCardHeader,
@@ -85,12 +85,19 @@ interface ProviderHomeProps {
 }
 
 const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
+  // FIXED: Stable state management
   const [searchId, setSearchId] = useState('');
   const [analytics, setAnalytics] = useState<EnhancedDriverAnalytics | null>(null);
   const [selectedTrip, setSelectedTrip] = useState<EnhancedTripSummary | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [activeSegment, setActiveSegment] = useState<string>('overview');
+
+  // FIXED: Stable handlers to prevent input clearing
+  const handleSearchIdChange = useCallback((value: string) => {
+    setSearchId(value);
+    if (error) setError(''); // Clear error when user types
+  }, [error]);
 
   // FIXED: Safe value handling functions
   const safeToFixed = (value: number | undefined | null, decimals: number = 1): string => {
@@ -188,7 +195,7 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
     }
   };
 
-  // FIXED: Smart duration formatting - minutes until >60, then hours+minutes
+  // FIXED: Smart duration formatting
   const formatDuration = (minutes: number | undefined): string => {
     if (!minutes || isNaN(minutes)) return '0m';
     
@@ -209,7 +216,6 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
 
   // FIXED: Get frequency metrics with fallback
   const getFrequencyMetrics = (analytics: EnhancedDriverAnalytics) => {
-    // Try multiple property names for compatibility
     const per100Miles = analytics.events_per_100_miles || 
                        analytics.harsh_events_per_100_miles || 
                        (analytics.events_per_1000_miles ? analytics.events_per_1000_miles / 10 : 0);
@@ -223,16 +229,25 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
     return { per100Miles, per1000Miles, perHour };
   };
 
-  // FIXED: Explain why score is good despite industry rating
+  // FIXED: Explain score vs industry rating with NEW realistic benchmarks
   const getScoreExplanation = (analytics: EnhancedDriverAnalytics) => {
     const behaviorScore = safeNumber(analytics.overall_behavior_score);
     const industryRating = analytics.industry_rating;
-    const { per1000Miles } = getFrequencyMetrics(analytics);
+    const { per100Miles } = getFrequencyMetrics(analytics);
     
-    if (behaviorScore >= 75 && industryRating === 'Dangerous') {
+    // NEW: More realistic explanation based on improved thresholds
+    if (behaviorScore >= 75 && (industryRating === 'Poor' || industryRating === 'Dangerous')) {
       return {
-        title: "Score vs Industry Rating Explanation",
-        message: `The behavior score (${behaviorScore}) considers multiple factors including speed consistency, acceleration smoothness, and turn safety. The "Dangerous" industry rating is based solely on event frequency (${safeToFixed(per1000Miles, 1)} events per 1000 miles). This suggests good fundamental driving habits with some harsh events that need improvement.`,
+        title: "Why Good Behavior Score Despite Industry Rating",
+        message: `The behavior score (${behaviorScore}) considers speed consistency, smooth acceleration, and safe turns - showing good fundamental driving habits. The "${industryRating}" rating focuses on harsh events (${safeToFixed(per100Miles, 1)} per 100 miles). This suggests good overall control with some aggressive moments that can be improved.`,
+        color: 'warning'
+      };
+    }
+    
+    if (behaviorScore < 60 && (industryRating === 'Excellent' || industryRating === 'Very Good')) {
+      return {
+        title: "Why Lower Score Despite Good Industry Rating",
+        message: `While harsh events are rare (${safeToFixed(per100Miles, 1)} per 100 miles), the lower behavior score (${behaviorScore}) indicates issues with speed consistency, turn safety, or acceleration smoothness that affect overall driving quality.`,
         color: 'warning'
       };
     }
@@ -272,15 +287,16 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
             <IonInput
               placeholder="driver-user-id"
               value={searchId}
-              onIonChange={e => setSearchId(e.detail.value!)}
+              onIonInput={e => handleSearchIdChange(e.detail.value!)}
               disabled={loading}
+              clearInput
             />
             <IonButton
               expand="block"
               onClick={handleAnalyzeDriver}
               disabled={!searchId.trim() || loading}
             >
-              {loading ? 'Analyzing...' : 'Analyze Driver (FIXED)'}
+              {loading ? 'Analyzing...' : 'Analyze Driver (FIXED - Realistic Metrics)'}
             </IonButton>
           </IonCardContent>
         </IonCard>
@@ -338,7 +354,7 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                 <IonLabel>Trip Analysis</IonLabel>
               </IonSegmentButton>
               <IonSegmentButton value="industry">
-                <IonLabel>Industry Metrics</IonLabel>
+                <IonLabel>Industry Metrics (NEW)</IonLabel>
               </IonSegmentButton>
             </IonSegment>
 
@@ -412,6 +428,180 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
               </IonCard>
             )}
 
+            {activeSegment === 'industry' && (
+              <IonCard>
+                <IonCardHeader>
+                  <IonCardTitle>Industry-Standard Metrics (IMPROVED)</IonCardTitle>
+                </IonCardHeader>
+                <IonCardContent>
+                  {/* NEW: Improved explanation banner */}
+                  <IonCard color="tertiary">
+                    <IonCardContent>
+                      <IonText color="light">
+                        <h4>🎯 NEW: Realistic Industry Standards</h4>
+                        <p style={{ margin: 0, fontSize: '0.9em' }}>
+                          Updated with realistic thresholds: Harsh acceleration (10+ mph/s), Hard braking (-12+ mph/s). 
+                          Only truly aggressive driving is penalized. Normal city driving with traffic lights is now rated appropriately.
+                        </p>
+                      </IonText>
+                    </IonCardContent>
+                  </IonCard>
+
+                  {/* Score vs Industry Rating Explanation */}
+                  {getScoreExplanation(analytics) && (
+                    <IonCard color={getScoreExplanation(analytics)!.color}>
+                      <IonCardContent>
+                        <IonText color="light">
+                          <h4>{getScoreExplanation(analytics)!.title}</h4>
+                          <p style={{ margin: 0, fontSize: '0.9em' }}>
+                            {getScoreExplanation(analytics)!.message}
+                          </p>
+                        </IonText>
+                      </IonCardContent>
+                    </IonCard>
+                  )}
+
+                  <IonList>
+                    <IonItemDivider>
+                      <IonLabel>NEW: Realistic Frequency-Based Risk Metrics</IonLabel>
+                    </IonItemDivider>
+                    
+                    {/* IMPROVED: More realistic per 100 miles metrics */}
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Harsh Events per 100 Miles (NEW)</h3>
+                        <p>Realistic benchmarks: &lt;1.0 (Excellent), &lt;2.5 (Very Good), &lt;5.0 (Good), &lt;8.0 (Fair)</p>
+                        <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
+                          Only counts: 10+ mph/s acceleration, -12+ mph/s braking
+                        </p>
+                      </IonLabel>
+                      <IonBadge color={getIndustryRatingColor(analytics.industry_rating || 'Unknown')}>
+                        {safeToFixed(getFrequencyMetrics(analytics).per100Miles, 2)}
+                      </IonBadge>
+                    </IonItem>
+                    
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Harsh Events per 1000 Miles</h3>
+                        <p>Research-based: &lt;10 (Excellent), &lt;25 (Very Good), &lt;50 (Good)</p>
+                      </IonLabel>
+                      <IonBadge color={getIndustryRatingColor(analytics.industry_rating || 'Unknown')}>
+                        {safeToFixed(getFrequencyMetrics(analytics).per1000Miles, 1)}
+                      </IonBadge>
+                    </IonItem>
+                    
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Harsh Events per Hour</h3>
+                        <p>Reasonable: &lt;1.5 (Good), &lt;3.0 (Fair), &gt;3.0 (Poor)</p>
+                      </IonLabel>
+                      <IonBadge color={safeNumber(getFrequencyMetrics(analytics).perHour) > 3 ? 'danger' : safeNumber(getFrequencyMetrics(analytics).perHour) > 1.5 ? 'warning' : 'success'}>
+                        {safeToFixed(getFrequencyMetrics(analytics).perHour, 2)}
+                      </IonBadge>
+                    </IonItem>
+                    
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Industry Rating (IMPROVED)</h3>
+                        <p>Based on realistic physics-based thresholds</p>
+                      </IonLabel>
+                      <IonBadge color={getIndustryRatingColor(analytics.industry_rating || 'Unknown')}>
+                        {analytics.industry_rating || 'Not Available'}
+                      </IonBadge>
+                    </IonItem>
+
+                    <IonItemDivider>
+                      <IonLabel>What's NEW in These Metrics</IonLabel>
+                    </IonItemDivider>
+                    
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Realistic Acceleration Thresholds</h3>
+                        <p>10 mph/s = aggressive (0-60 in 6 sec), 12+ mph/s = dangerous</p>
+                      </IonLabel>
+                      <IonChip color="success">
+                        <IonIcon icon={checkmarkCircle} />
+                        IMPROVED
+                      </IonChip>
+                    </IonItem>
+                    
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Context-Aware Analysis</h3>
+                        <p>City driving vs highway driving considered separately</p>
+                      </IonLabel>
+                      <IonChip color="success">
+                        <IonIcon icon={checkmarkCircle} />
+                        NEW
+                      </IonChip>
+                    </IonItem>
+                    
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Minimum Distance Rules</h3>
+                        <p>Frequency only calculated for trips 3+ miles to avoid skewing</p>
+                      </IonLabel>
+                      <IonChip color="success">
+                        <IonIcon icon={checkmarkCircle} />
+                        NEW
+                      </IonChip>
+                    </IonItem>
+
+                    <IonItemDivider>
+                      <IonLabel>Trip Efficiency Metrics</IonLabel>
+                    </IonItemDivider>
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Average Trip Distance</h3>
+                        <p>{safeToFixed(analytics.avg_trip_distance_miles, 2)} miles</p>
+                      </IonLabel>
+                    </IonItem>
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Average Trip Duration</h3>
+                        <p>{analytics.formatted_avg_duration || formatDuration(analytics.avg_trip_duration_minutes)}</p>
+                      </IonLabel>
+                    </IonItem>
+
+                    <IonItemDivider>
+                      <IonLabel>Data Quality Metrics</IonLabel>
+                    </IonItemDivider>
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Analysis Timestamp</h3>
+                        <p>{formatDate(analytics.analysis_timestamp)}</p>
+                      </IonLabel>
+                    </IonItem>
+                    <IonItem>
+                      <IonLabel>
+                        <h3>Algorithm Version</h3>
+                        <p>Analytics {analytics.algorithm_version || analytics.data_version}</p>
+                      </IonLabel>
+                      <IonChip color="tertiary">
+                        <IonIcon icon={checkmarkCircle} />
+                        REALISTIC
+                      </IonChip>
+                    </IonItem>
+                    
+                    {/* Algorithm integration info */}
+                    {analytics.frequency_integration && (
+                      <IonItem>
+                        <IonLabel>
+                          <h3>Industry Integration</h3>
+                          <p>{analytics.frequency_integration.replace(/_/g, ' ')}</p>
+                        </IonLabel>
+                        <IonChip color="success">
+                          <IonIcon icon={checkmarkCircle} />
+                          Integrated
+                        </IonChip>
+                      </IonItem>
+                    )}
+                  </IonList>
+                </IonCardContent>
+              </IonCard>
+            )}
+
+            {/* Keep the existing detailed and trips segments unchanged */}
             {activeSegment === 'detailed' && (
               <IonCard>
                 <IonCardHeader>
@@ -445,12 +635,15 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                     </IonItem>
 
                     <IonItemDivider>
-                      <IonLabel>Acceleration Analysis</IonLabel>
+                      <IonLabel>Acceleration Analysis (IMPROVED)</IonLabel>
                     </IonItemDivider>
                     <IonItem>
                       <IonLabel>
-                        <h3>Sudden Accelerations</h3>
+                        <h3>Sudden Accelerations (NEW: 10+ mph/s)</h3>
                         <p>{analytics.total_sudden_accelerations} events total</p>
+                        <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
+                          Now uses realistic 10+ mph/s threshold (was too sensitive before)
+                        </p>
                       </IonLabel>
                       <IonBadge color={analytics.total_sudden_accelerations > 10 ? 'danger' : analytics.total_sudden_accelerations > 5 ? 'warning' : 'success'}>
                         {analytics.total_sudden_accelerations}
@@ -458,19 +651,22 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                     </IonItem>
                     <IonItem>
                       <IonLabel>
-                        <h3>Sudden Decelerations</h3>
+                        <h3>Sudden Decelerations (NEW: -12+ mph/s)</h3>
                         <p>{analytics.total_sudden_decelerations} events total</p>
+                        <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
+                          Now uses realistic -12+ mph/s threshold (hard braking only)
+                        </p>
                       </IonLabel>
-                      <IonBadge color={analytics.total_sudden_decelerations > 10 ? 'danger' : analytics.total_sudden_decelerations > 5 ? 'warning' : 'success'}>
+                      <IonBadge color={analytics.total_sudden_decelerations > 8 ? 'danger' : analytics.total_sudden_decelerations > 4 ? 'warning' : 'success'}>
                         {analytics.total_sudden_decelerations}
                       </IonBadge>
                     </IonItem>
                     <IonItem>
                       <IonLabel>
-                        <h3>Hard Stops</h3>
+                        <h3>Hard Stops (Emergency Braking)</h3>
                         <p>{analytics.total_hard_stops} emergency/hard stops</p>
                       </IonLabel>
-                      <IonBadge color={analytics.total_hard_stops > 5 ? 'danger' : analytics.total_hard_stops > 2 ? 'warning' : 'success'}>
+                      <IonBadge color={analytics.total_hard_stops > 3 ? 'danger' : analytics.total_hard_stops > 1 ? 'warning' : 'success'}>
                         {analytics.total_hard_stops}
                       </IonBadge>
                     </IonItem>
@@ -496,126 +692,6 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                         {analytics.total_dangerous_turns}
                       </IonBadge>
                     </IonItem>
-                  </IonList>
-                </IonCardContent>
-              </IonCard>
-            )}
-
-            {activeSegment === 'industry' && (
-              <IonCard>
-                <IonCardHeader>
-                  <IonCardTitle>Industry-Standard Metrics</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  {/* FIXED: Score vs Industry Rating Explanation */}
-                  {getScoreExplanation(analytics) && (
-                    <IonCard color={getScoreExplanation(analytics)!.color}>
-                      <IonCardContent>
-                        <IonText color="light">
-                          <h4>{getScoreExplanation(analytics)!.title}</h4>
-                          <p style={{ margin: 0, fontSize: '0.9em' }}>
-                            {getScoreExplanation(analytics)!.message}
-                          </p>
-                        </IonText>
-                      </IonCardContent>
-                    </IonCard>
-                  )}
-
-                  <IonList>
-                    <IonItemDivider>
-                      <IonLabel>Frequency-Based Risk Metrics</IonLabel>
-                    </IonItemDivider>
-                    
-                    {/* FIXED: Handle both per 1000 miles and per 100 miles metrics */}
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Harsh Events per 1000 Miles</h3>
-                        <p>Industry benchmark: &lt;8 (Excellent), &lt;20 (Very Good), &lt;45 (Good)</p>
-                      </IonLabel>
-                      <IonBadge color={getIndustryRatingColor(analytics.industry_rating || 'Unknown')}>
-                        {safeToFixed(getFrequencyMetrics(analytics).per1000Miles, 1)}
-                      </IonBadge>
-                    </IonItem>
-                    
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Harsh Events per 100 Miles</h3>
-                        <p>Industry benchmark: &lt;0.8 (Excellent), &lt;2.0 (Very Good), &lt;4.5 (Good)</p>
-                      </IonLabel>
-                      <IonBadge color={getIndustryRatingColor(analytics.industry_rating || 'Unknown')}>
-                        {safeToFixed(getFrequencyMetrics(analytics).per100Miles, 2)}
-                      </IonBadge>
-                    </IonItem>
-                    
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Harsh Events per Hour</h3>
-                        <p>Industry benchmark: &lt;2.0 (Good), &lt;4.0 (Fair)</p>
-                      </IonLabel>
-                      <IonBadge color={safeNumber(getFrequencyMetrics(analytics).perHour) > 4 ? 'danger' : safeNumber(getFrequencyMetrics(analytics).perHour) > 2 ? 'warning' : 'success'}>
-                        {safeToFixed(getFrequencyMetrics(analytics).perHour, 2)}
-                      </IonBadge>
-                    </IonItem>
-                    
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Industry Rating</h3>
-                        <p>Based on realistic physics-based thresholds</p>
-                      </IonLabel>
-                      <IonBadge color={getIndustryRatingColor(analytics.industry_rating || 'Unknown')}>
-                        {analytics.industry_rating || 'Not Available'}
-                      </IonBadge>
-                    </IonItem>
-
-                    <IonItemDivider>
-                      <IonLabel>Trip Efficiency Metrics</IonLabel>
-                    </IonItemDivider>
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Average Trip Distance</h3>
-                        <p>{safeToFixed(analytics.avg_trip_distance_miles, 2)} miles</p>
-                      </IonLabel>
-                    </IonItem>
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Average Trip Duration (FIXED)</h3>
-                        <p>{analytics.formatted_avg_duration || formatDuration(analytics.avg_trip_duration_minutes)}</p>
-                      </IonLabel>
-                    </IonItem>
-
-                    <IonItemDivider>
-                      <IonLabel>Data Quality Metrics</IonLabel>
-                    </IonItemDivider>
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Analysis Timestamp</h3>
-                        <p>{formatDate(analytics.analysis_timestamp)}</p>
-                      </IonLabel>
-                    </IonItem>
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Algorithm Version</h3>
-                        <p>Analytics {analytics.algorithm_version || analytics.data_version}</p>
-                      </IonLabel>
-                      <IonChip color="tertiary">
-                        <IonIcon icon={checkmarkCircle} />
-                        FIXED
-                      </IonChip>
-                    </IonItem>
-                    
-                    {/* FIXED: Show algorithm information */}
-                    {analytics.frequency_integration && (
-                      <IonItem>
-                        <IonLabel>
-                          <h3>Industry Integration</h3>
-                          <p>{analytics.frequency_integration.replace(/_/g, ' ')}</p>
-                        </IonLabel>
-                        <IonChip color="success">
-                          <IonIcon icon={checkmarkCircle} />
-                          Integrated
-                        </IonChip>
-                      </IonItem>
-                    )}
                   </IonList>
                 </IonCardContent>
               </IonCard>
@@ -680,7 +756,7 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                         <p><strong>Trip ID:</strong> {selectedTrip.trip_id.split('_').pop()}</p>
                         <p><strong>Start:</strong> {formatDate(selectedTrip.start_timestamp)}</p>
                         <p><strong>End:</strong> {formatDate(selectedTrip.end_timestamp)}</p>
-                        <p><strong>Duration (FIXED):</strong> {selectedTrip.formatted_duration || formatDuration(selectedTrip.duration_minutes)}</p>
+                        <p><strong>Duration:</strong> {selectedTrip.formatted_duration || formatDuration(selectedTrip.duration_minutes)}</p>
                         <p><strong>Data Quality:</strong>
                           <IonBadge color={getDataQualityColor(selectedTrip.data_quality_score)} style={{marginLeft: '5px'}}>
                             {Math.round(selectedTrip.data_quality_score * 100)}%
@@ -700,9 +776,9 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                     </IonRow>
                   </IonGrid>
 
-                  {/* FIXED Trip Metrics */}
+                  {/* Trip Metrics */}
                   <IonItemDivider>
-                    <IonLabel>Behavior Metrics</IonLabel>
+                    <IonLabel>Behavior Metrics (IMPROVED)</IonLabel>
                   </IonItemDivider>
                   
                   <IonGrid>
@@ -710,8 +786,8 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                       <IonCol size="6">
                         <IonItem>
                           <IonLabel>
-                            <h4>Acceleration Events</h4>
-                            <p>Sudden: {selectedTrip.sudden_accelerations}</p>
+                            <h4>Acceleration Events (NEW)</h4>
+                            <p>Sudden (10+ mph/s): {selectedTrip.sudden_accelerations}</p>
                             <p>Gentle Score: {safeToFixed(selectedTrip.gentle_acceleration_score, 0)}/100</p>
                           </IonLabel>
                           <IonBadge color={selectedTrip.sudden_accelerations > 3 ? 'danger' : selectedTrip.sudden_accelerations > 1 ? 'warning' : 'success'}>
@@ -722,9 +798,9 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                       <IonCol size="6">
                         <IonItem>
                           <IonLabel>
-                            <h4>Deceleration Events</h4>
-                            <p>Sudden: {selectedTrip.sudden_decelerations}</p>
-                            <p>Hard Stops: {selectedTrip.hard_stops}</p>
+                            <h4>Deceleration Events (NEW)</h4>
+                            <p>Hard Braking (-12+ mph/s): {selectedTrip.sudden_decelerations}</p>
+                            <p>Emergency Stops: {selectedTrip.hard_stops}</p>
                           </IonLabel>
                           <IonBadge color={(selectedTrip.sudden_decelerations + selectedTrip.hard_stops) > 3 ? 'danger' : (selectedTrip.sudden_decelerations + selectedTrip.hard_stops) > 1 ? 'warning' : 'success'}>
                             {selectedTrip.sudden_decelerations + selectedTrip.hard_stops}
@@ -749,7 +825,7 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                       <IonCol size="6">
                         <IonItem>
                           <IonLabel>
-                            <h4>Safety Summary</h4>
+                            <h4>Safety Summary (IMPROVED)</h4>
                             <p>Total Harsh Events: {selectedTrip.sudden_accelerations + selectedTrip.sudden_decelerations + selectedTrip.hard_stops}</p>
                             <p>Events per Mile: {((selectedTrip.sudden_accelerations + selectedTrip.sudden_decelerations + selectedTrip.hard_stops) / selectedTrip.total_distance_miles).toFixed(3)}</p>
                             <p>Industry Rating: {selectedTrip.industry_rating || 'Not Available'}</p>
@@ -783,7 +859,7 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
           </>
         )}
 
-        <IonLoading isOpen={loading} message="Analyzing driver data..." />
+        <IonLoading isOpen={loading} message="Analyzing driver data with realistic metrics..." />
       </IonContent>
     </IonPage>
   );

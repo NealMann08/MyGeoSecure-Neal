@@ -1,5 +1,5 @@
-// frontend/src/pages/SignIn.tsx - Fixed: Zipcode only for new users, settings for existing
-import React, { useState, useEffect } from 'react';
+// frontend/src/pages/SignIn.tsx - FIXED: Input clearing issue
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
   IonButton, IonInput, IonSelect, IonSelectOption, IonLabel, IonToggle,
@@ -28,210 +28,234 @@ interface EnhancedUser {
 }
 
 const SignIn: React.FC<SignInProps> = ({ onSignIn }) => {
-  const [name, setName] = useState('');
-  const [role, setRole] = useState<'driver' | 'provider'>('driver');
-  const [zipcode, setZipcode] = useState('');
-  const [isNewUser, setIsNewUser] = useState(true);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [geocoding, setGeocoding] = useState(false);
-  const [basePoint, setBasePoint] = useState<CityCoordinates | null>(null);
-  const [zipcodeValid, setZipcodeValid] = useState<boolean | null>(null);
-  const [showPrivacySettings, setShowPrivacySettings] = useState(false);
+  // FIXED: Stable state management to prevent input clearing
+  const [formData, setFormData] = useState({
+    name: '',
+    role: 'driver' as 'driver' | 'provider',
+    zipcode: '',
+    isNewUser: true
+  });
+  
+  const [uiState, setUiState] = useState({
+    error: '',
+    loading: false,
+    geocoding: false,
+    showPrivacySettings: false
+  });
+  
+  const [locationData, setLocationData] = useState({
+    basePoint: null as CityCoordinates | null,
+    zipcodeValid: null as boolean | null
+  });
   
   // Privacy settings
-  const [anonymizationRadius, setAnonymizationRadius] = useState(10); // miles
-  const [dataRetentionPeriod, setDataRetentionPeriod] = useState(12); // months
-  const [consentLevel, setConsentLevel] = useState<'full' | 'basic' | 'minimal'>('full');
+  const [privacySettings, setPrivacySettings] = useState({
+    anonymizationRadius: 10,
+    dataRetentionPeriod: 12,
+    consentLevel: 'full' as 'full' | 'basic' | 'minimal'
+  });
 
   const history = useHistory();
 
-  // Only validate zipcode for NEW DRIVER accounts
+  // FIXED: Memoized handlers to prevent re-renders
+  const updateFormData = useCallback((updates: Partial<typeof formData>) => {
+    setFormData(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  const updateUiState = useCallback((updates: Partial<typeof uiState>) => {
+    setUiState(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  const updateLocationData = useCallback((updates: Partial<typeof locationData>) => {
+    setLocationData(prev => ({ ...prev, ...updates }));
+  }, []);
+
+  // FIXED: Debounced zipcode validation
   useEffect(() => {
-    if (zipcode.trim() && isNewUser && role === 'driver') {
-      const isValid = validateZipcode(zipcode);
-      setZipcodeValid(isValid);
+    if (formData.zipcode.trim() && formData.isNewUser && formData.role === 'driver') {
+      const isValid = validateZipcode(formData.zipcode);
+      updateLocationData({ zipcodeValid: isValid });
       
       if (isValid) {
-        // Debounce geocoding
-        const timer = setTimeout(async () => {
-          await performGeocoding(zipcode);
+        const timer = setTimeout(() => {
+          performGeocoding(formData.zipcode);
         }, 1000);
         
         return () => clearTimeout(timer);
       } else {
-        setBasePoint(null);
+        updateLocationData({ basePoint: null });
       }
     } else {
-      setZipcodeValid(null);
-      setBasePoint(null);
+      updateLocationData({ zipcodeValid: null, basePoint: null });
     }
-  }, [zipcode, role, isNewUser]);
+  }, [formData.zipcode, formData.role, formData.isNewUser, updateLocationData]);
 
   const performGeocoding = async (zip: string) => {
-    if (geocoding) return;
+    if (uiState.geocoding) return;
     
-    setGeocoding(true);
+    updateUiState({ geocoding: true });
     try {
       const coordinates = await getCityCoordinatesFromZipcode(zip);
-      setBasePoint(coordinates);
+      updateLocationData({ basePoint: coordinates });
       console.log('🎯 Base point set for new user:', coordinates);
     } catch (error) {
       console.error('Geocoding error:', error);
-      setError('Unable to locate city center. Please try a different zipcode.');
+      updateUiState({ error: 'Unable to locate city center. Please try a different zipcode.' });
     } finally {
-      setGeocoding(false);
+      updateUiState({ geocoding: false });
     }
   };
 
-// REPLACE your handleAuth function in SignIn.tsx with this:
+  // FIXED: Stable form handlers
+  const handleNameChange = useCallback((value: string) => {
+    updateFormData({ name: value });
+    if (uiState.error) updateUiState({ error: '' });
+  }, [updateFormData, updateUiState, uiState.error]);
 
-const handleAuth = async () => {
-  if (!name.trim()) {
-    setError('Name is required');
-    return;
-  }
+  const handleRoleChange = useCallback((value: 'driver' | 'provider') => {
+    updateFormData({ role: value });
+    if (uiState.error) updateUiState({ error: '' });
+  }, [updateFormData, updateUiState, uiState.error]);
 
-  // NEW DRIVER validation - zipcode required
-  if (isNewUser && role === 'driver') {
-    if (!zipcode.trim()) {
-      setError('Zipcode is required for new driver accounts to set up privacy protection');
+  const handleZipcodeChange = useCallback((value: string) => {
+    updateFormData({ zipcode: value });
+    if (uiState.error) updateUiState({ error: '' });
+  }, [updateFormData, updateUiState, uiState.error]);
+
+  const handleAuth = async () => {
+    if (!formData.name.trim()) {
+      updateUiState({ error: 'Name is required' });
       return;
     }
 
-    if (!validateZipcode(zipcode)) {
-      setError('Please enter a valid US zipcode (e.g., 94583 or 94583-1234)');
+    // NEW DRIVER validation - zipcode required
+    if (formData.isNewUser && formData.role === 'driver') {
+      if (!formData.zipcode.trim()) {
+        updateUiState({ error: 'Zipcode is required for new driver accounts to set up privacy protection' });
+        return;
+      }
+
+      if (!validateZipcode(formData.zipcode)) {
+        updateUiState({ error: 'Please enter a valid US zipcode (e.g., 94583 or 94583-1234)' });
+        return;
+      }
+
+      if (!locationData.basePoint) {
+        updateUiState({ error: 'Please wait for location verification to complete' });
+        return;
+      }
+    }
+
+    // EXISTING USER validation - no zipcode required
+    if (!formData.isNewUser && formData.zipcode.trim()) {
+      updateUiState({ error: 'Existing users should manage zipcode in Settings, not during signin' });
       return;
     }
 
-    if (!basePoint) {
-      setError('Please wait for location verification to complete');
-      return;
-    }
-  }
+    updateUiState({ loading: true, error: '' });
 
-  // EXISTING USER validation - no zipcode required
-  if (!isNewUser && zipcode.trim()) {
-    setError('Existing users should manage zipcode in Settings, not during signin');
-    return;
-  }
-
-  setLoading(true);
-  setError('');
-
-  try {
-    const userId = name.trim().toLowerCase().replace(/\s+/g, '-');
-    
-    // Prepare user data
-    const userData: EnhancedUser = {
-      userId,
-      name: name.trim(),
-      role,
-    };
-
-    // Only add privacy data for NEW drivers
-    if (isNewUser && role === 'driver' && zipcode.trim()) {
-      userData.zipcode = zipcode.trim();
-      userData.basePoint = basePoint || undefined;
-      userData.privacySettings = {
-        anonymizationRadius,
-        dataRetentionPeriod,
-        consentLevel
+    try {
+      const userId = formData.name.trim().toLowerCase().replace(/\s+/g, '-');
+      
+      // Prepare user data
+      const userData: EnhancedUser = {
+        userId,
+        name: formData.name.trim(),
+        role: formData.role,
       };
+
+      // Only add privacy data for NEW drivers
+      if (formData.isNewUser && formData.role === 'driver' && formData.zipcode.trim()) {
+        userData.zipcode = formData.zipcode.trim();
+        userData.basePoint = locationData.basePoint || undefined;
+        userData.privacySettings = privacySettings;
+      }
+
+      console.log('🔐 Auth request:', {
+        userId,
+        role: formData.role,
+        mode: formData.isNewUser ? 'signup' : 'signin',
+        hasZipcode: !!userData.zipcode
+      });
+
+      // Call backend
+      const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: userId,
+          name: formData.name.trim(),
+          role: formData.role,
+          mode: formData.isNewUser ? 'signup' : 'signin',
+          zipcode: userData.zipcode,
+          base_point: userData.basePoint,
+          privacy_settings: userData.privacySettings
+        })
+      });
+
+      const data = await res.json();
+      if (res.status !== 200) {
+        updateUiState({ error: data.error || 'Something went wrong' });
+        return;
+      }
+
+      // FIXED: Use returned user data
+      const finalUserData = {
+        userId,
+        name: formData.name.trim(),
+        role: formData.role,
+        zipcode: data.user_data?.zipcode || userData.zipcode,
+        basePoint: data.user_data?.base_point || userData.basePoint,
+        privacySettings: data.user_data?.privacy_settings || userData.privacySettings,
+        registrationDate: data.user_data?.created_at || new Date().toISOString()
+      };
+
+      localStorage.setItem('privacyDriveUser', JSON.stringify(finalUserData));
+      
+      console.log('✅ User authenticated with complete data:', finalUserData);
+      onSignIn(finalUserData);
+      history.push(`/${formData.role}`);
+
+    } catch (err) {
+      console.error('Auth error:', err);
+      updateUiState({ error: err instanceof Error ? err.message : 'Authentication failed' });
+    } finally {
+      updateUiState({ loading: false });
     }
-
-    console.log('🔐 Auth request:', {
-      userId,
-      role,
-      mode: isNewUser ? 'signup' : 'signin',
-      hasZipcode: !!userData.zipcode
-    });
-
-    // Call backend
-    const res = await fetch(`https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        user_id: userId,
-        name: name.trim(),
-        role,
-        mode: isNewUser ? 'signup' : 'signin',
-        // Only send zipcode data for new users
-        zipcode: userData.zipcode,
-        base_point: userData.basePoint,
-        privacy_settings: userData.privacySettings
-      })
-    });
-
-    const data = await res.json();
-    if (res.status !== 200) {
-      setError(data.error || 'Something went wrong');
-      return;
-    }
-
-    // FIXED: Use returned user data (includes stored zipcode/base point for existing users)
-    const finalUserData = {
-      userId,
-      name: name.trim(),
-      role,
-      // FIXED: For existing users, use their stored data; for new users, use local data
-      zipcode: data.user_data?.zipcode || userData.zipcode,
-      basePoint: data.user_data?.base_point || userData.basePoint,
-      privacySettings: data.user_data?.privacy_settings || userData.privacySettings,
-      registrationDate: data.user_data?.created_at || new Date().toISOString()
-    };
-
-    localStorage.setItem('privacyDriveUser', JSON.stringify(finalUserData));
-    
-    console.log('✅ User authenticated with complete data:', finalUserData);
-    onSignIn(finalUserData);
-    history.push(`/${role}`);
-
-  } catch (err) {
-    console.error('Auth error:', err);
-    setError(err instanceof Error ? err.message : 'Authentication failed');
-  } finally {
-    setLoading(false);
-  }
-};
+  };
 
   const getPrivacyImpactText = () => {
-    if (!basePoint) return 'Location not verified';
+    if (!locationData.basePoint) return 'Location not verified';
     
-    const radiusText = anonymizationRadius === 1 ? '1 mile' : `${anonymizationRadius} miles`;
-    return `Your driving data will be anonymized within a ${radiusText} radius of ${basePoint.city}, ${basePoint.state}`;
+    const radiusText = privacySettings.anonymizationRadius === 1 ? '1 mile' : `${privacySettings.anonymizationRadius} miles`;
+    return `Your driving data will be anonymized within a ${radiusText} radius of ${locationData.basePoint.city}, ${locationData.basePoint.state}`;
   };
 
   const canSubmit = () => {
-    if (!name.trim()) return false;
-    if (loading || geocoding) return false;
+    if (!formData.name.trim()) return false;
+    if (uiState.loading || uiState.geocoding) return false;
     
-    if (isNewUser && role === 'driver') {
-      // New drivers need valid zipcode
-      return zipcode.trim() && zipcodeValid && basePoint;
+    if (formData.isNewUser && formData.role === 'driver') {
+      return formData.zipcode.trim() && locationData.zipcodeValid && locationData.basePoint;
     } else {
-      // Existing users and providers just need name
       return true;
     }
   };
 
   const handleToggleUserType = () => {
-    setIsNewUser(!isNewUser);
-    setShowPrivacySettings(false);
-    setError('');
-    // Clear zipcode fields when switching to existing user
-    if (isNewUser) {
-      setZipcode('');
-      setBasePoint(null);
-      setZipcodeValid(null);
-    }
+    updateFormData({ 
+      isNewUser: !formData.isNewUser,
+      zipcode: formData.isNewUser ? '' : formData.zipcode // Clear zipcode when switching to existing user
+    });
+    updateUiState({ showPrivacySettings: false, error: '' });
+    updateLocationData({ basePoint: null, zipcodeValid: null });
   };
 
   return (
     <IonPage>
       <IonHeader>
         <IonToolbar>
-          <IonTitle>{isNewUser ? 'Create Account' : 'Sign In'}</IonTitle>
+          <IonTitle>{formData.isNewUser ? 'Create Account' : 'Sign In'}</IonTitle>
         </IonToolbar>
       </IonHeader>
       
@@ -245,18 +269,19 @@ const handleAuth = async () => {
             <IonItem>
               <IonInput
                 placeholder="Full Name"
-                value={name}
-                onIonChange={e => setName(e.detail.value!)}
-                disabled={loading}
+                value={formData.name}
+                onIonInput={e => handleNameChange(e.detail.value!)}
+                disabled={uiState.loading}
                 required
+                clearInput
               />
             </IonItem>
             
             <IonItem>
               <IonSelect 
-                value={role} 
-                onIonChange={e => setRole(e.detail.value)} 
-                disabled={loading}
+                value={formData.role} 
+                onIonChange={e => handleRoleChange(e.detail.value)} 
+                disabled={uiState.loading}
                 placeholder="Select Role"
               >
                 <IonSelectOption value="driver">Driver</IonSelectOption>
@@ -267,7 +292,7 @@ const handleAuth = async () => {
         </IonCard>
 
         {/* Driver Privacy Setup - ONLY for NEW users */}
-        {isNewUser && role === 'driver' && (
+        {formData.isNewUser && formData.role === 'driver' && (
           <IonCard>
             <IonCardHeader>
               <IonCardTitle>
@@ -284,49 +309,50 @@ const handleAuth = async () => {
                 <IonIcon icon={locationOutline} slot="start" />
                 <IonInput
                   placeholder="Zipcode (e.g., 94583)"
-                  value={zipcode}
-                  onIonChange={e => setZipcode(e.detail.value!)}
-                  disabled={loading || geocoding}
+                  value={formData.zipcode}
+                  onIonInput={e => handleZipcodeChange(e.detail.value!)}
+                  disabled={uiState.loading || uiState.geocoding}
                   required
+                  clearInput
                 />
-                {zipcodeValid === true && (
+                {locationData.zipcodeValid === true && (
                   <IonIcon icon={shieldCheckmarkOutline} color="success" slot="end" />
                 )}
-                {zipcodeValid === false && (
+                {locationData.zipcodeValid === false && (
                   <IonIcon icon={alertCircleOutline} color="danger" slot="end" />
                 )}
               </IonItem>
 
-              {geocoding && (
+              {uiState.geocoding && (
                 <div style={{ marginTop: '10px' }}>
                   <IonLabel>Verifying location...</IonLabel>
                   <IonProgressBar type="indeterminate" color="primary" />
                 </div>
               )}
 
-              {basePoint && (
+              {locationData.basePoint && (
                 <div style={{ marginTop: '15px' }}>
                   <IonChip color="success">
                     <IonIcon icon={shieldCheckmarkOutline} />
                     <IonLabel>
-                      Verified: {basePoint.city}, {basePoint.state}
+                      Verified: {locationData.basePoint.city}, {locationData.basePoint.state}
                     </IonLabel>
                   </IonChip>
                   
                   <IonText>
                     <p style={{ fontSize: '0.9em', color: 'var(--ion-color-medium)', marginTop: '8px' }}>
-                      Source: {basePoint.source === 'zippopotam' ? 'Zippopotam API' : 
-                               basePoint.source === 'cache' ? 'Cached' : 'Fallback'}
+                      Source: {locationData.basePoint.source === 'zippopotam' ? 'Zippopotam API' : 
+                               locationData.basePoint.source === 'cache' ? 'Cached' : 'Fallback'}
                     </p>
                   </IonText>
 
                   <IonButton
                     fill="outline"
                     size="small"
-                    onClick={() => setShowPrivacySettings(!showPrivacySettings)}
+                    onClick={() => updateUiState({ showPrivacySettings: !uiState.showPrivacySettings })}
                     style={{ marginTop: '10px' }}
                   >
-                    {showPrivacySettings ? 'Hide' : 'Show'} Privacy Settings
+                    {uiState.showPrivacySettings ? 'Hide' : 'Show'} Privacy Settings
                   </IonButton>
                 </div>
               )}
@@ -334,8 +360,8 @@ const handleAuth = async () => {
           </IonCard>
         )}
 
-        {/* Privacy Settings (for new driver accounts) */}
-        {isNewUser && role === 'driver' && showPrivacySettings && basePoint && (
+        {/* Privacy Settings */}
+        {formData.isNewUser && formData.role === 'driver' && uiState.showPrivacySettings && locationData.basePoint && (
           <IonCard>
             <IonCardHeader>
               <IonCardTitle>Privacy Settings</IonCardTitle>
@@ -344,13 +370,13 @@ const handleAuth = async () => {
               <IonItem>
                 <IonLabel>
                   <h3>Anonymization Radius</h3>
-                  <p>{anonymizationRadius} mile{anonymizationRadius !== 1 ? 's' : ''}</p>
+                  <p>{privacySettings.anonymizationRadius} mile{privacySettings.anonymizationRadius !== 1 ? 's' : ''}</p>
                 </IonLabel>
                 <IonRange
                   min={1}
                   max={50}
-                  value={anonymizationRadius}
-                  onIonChange={e => setAnonymizationRadius(e.detail.value as number)}
+                  value={privacySettings.anonymizationRadius}
+                  onIonChange={e => setPrivacySettings(prev => ({ ...prev, anonymizationRadius: e.detail.value as number }))}
                   pin={true}
                   snaps={true}
                   ticks={false}
@@ -360,11 +386,11 @@ const handleAuth = async () => {
               <IonItem>
                 <IonLabel>
                   <h3>Data Retention Period</h3>
-                  <p>{dataRetentionPeriod} month{dataRetentionPeriod !== 1 ? 's' : ''}</p>
+                  <p>{privacySettings.dataRetentionPeriod} month{privacySettings.dataRetentionPeriod !== 1 ? 's' : ''}</p>
                 </IonLabel>
                 <IonSelect 
-                  value={dataRetentionPeriod} 
-                  onIonChange={e => setDataRetentionPeriod(e.detail.value)}
+                  value={privacySettings.dataRetentionPeriod} 
+                  onIonChange={e => setPrivacySettings(prev => ({ ...prev, dataRetentionPeriod: e.detail.value }))}
                 >
                   <IonSelectOption value={1}>1 Month</IonSelectOption>
                   <IonSelectOption value={3}>3 Months</IonSelectOption>
@@ -373,8 +399,6 @@ const handleAuth = async () => {
                   <IonSelectOption value={24}>2 Years</IonSelectOption>
                 </IonSelect>
               </IonItem>
-
-              
 
               <div style={{ marginTop: '15px', padding: '10px', backgroundColor: 'var(--ion-color-light)', borderRadius: '8px' }}>
                 <IonText>
@@ -388,30 +412,30 @@ const handleAuth = async () => {
           </IonCard>
         )}
 
-{/* Existing User Notice - FIXED: Only show for drivers */}
-{!isNewUser && role === 'driver' && (
-  <IonCard>
-    <IonCardContent>
-      <IonText>
-        <p><strong>Existing Driver:</strong> After signing in, you can manage your zipcode and privacy settings from your dashboard.</p>
-      </IonText>
-    </IonCardContent>
-  </IonCard>
-)}
+        {/* Existing User Notice */}
+        {!formData.isNewUser && formData.role === 'driver' && (
+          <IonCard>
+            <IonCardContent>
+              <IonText>
+                <p><strong>Existing Driver:</strong> After signing in, you can manage your zipcode and privacy settings from your dashboard.</p>
+              </IonText>
+            </IonCardContent>
+          </IonCard>
+        )}
 
-{/* Provider Notice - NEW: Show for providers */}
-{role === 'provider' && (
-  <IonCard>
-    <IonCardHeader>
-      <IonCardTitle>Service Provider Access</IonCardTitle>
-    </IonCardHeader>
-    <IonCardContent>
-      <IonText>
-        <p>As a service provider, you can analyze driver data to assess risk and driving behavior patterns.</p>
-      </IonText>
-    </IonCardContent>
-  </IonCard>
-)}
+        {/* Provider Notice */}
+        {formData.role === 'provider' && (
+          <IonCard>
+            <IonCardHeader>
+              <IonCardTitle>Service Provider Access</IonCardTitle>
+            </IonCardHeader>
+            <IonCardContent>
+              <IonText>
+                <p>As a service provider, you can analyze driver data to assess risk and driving behavior patterns.</p>
+              </IonText>
+            </IonCardContent>
+          </IonCard>
+        )}
 
         {/* Authentication Controls */}
         <IonCard>
@@ -422,35 +446,35 @@ const handleAuth = async () => {
               disabled={!canSubmit()}
               color={canSubmit() ? 'primary' : 'medium'}
             >
-              {loading ? 'Please wait...' : (isNewUser ? 'Create Account' : 'Log In')}
+              {uiState.loading ? 'Please wait...' : (formData.isNewUser ? 'Create Account' : 'Log In')}
             </IonButton>
 
             <div style={{ marginTop: '15px', textAlign: 'center' }}>
-              <IonLabel>{isNewUser ? 'Already have an account?' : 'New user?'}</IonLabel>
+              <IonLabel>{formData.isNewUser ? 'Already have an account?' : 'New user?'}</IonLabel>
               <IonButton 
                 fill="clear" 
                 onClick={handleToggleUserType}
-                disabled={loading}
+                disabled={uiState.loading}
               >
-                {isNewUser ? 'Sign In' : 'Create Account'}
+                {formData.isNewUser ? 'Sign In' : 'Create Account'}
               </IonButton>
             </div>
           </IonCardContent>
         </IonCard>
 
-        {error && (
+        {uiState.error && (
           <IonCard color="danger">
             <IonCardContent>
               <IonText color="light">
-                <p style={{ margin: 0 }}>{error}</p>
+                <p style={{ margin: 0 }}>{uiState.error}</p>
               </IonText>
             </IonCardContent>
           </IonCard>
         )}
         
         <IonLoading 
-          isOpen={loading} 
-          message={geocoding ? "Verifying location..." : "Authenticating..."} 
+          isOpen={uiState.loading} 
+          message={uiState.geocoding ? "Verifying location..." : "Authenticating..."} 
         />
       </IonContent>
     </IonPage>

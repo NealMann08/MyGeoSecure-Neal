@@ -49,60 +49,60 @@ function normalizeZipcode(zipcode: string): string {
 /**
  * Get cached coordinates for zipcode
  */
-function getCachedCoordinates(zipcode: string): CityCoordinates | null {
-  try {
-    const cache = localStorage.getItem(GEOCACHE_KEY);
-    if (!cache) return null;
+// function getCachedCoordinates(zipcode: string): CityCoordinates | null {
+//   try {
+//     const cache = localStorage.getItem(GEOCACHE_KEY);
+//     if (!cache) return null;
 
-    const geocache: Record<string, GeocacheEntry> = JSON.parse(cache);
-    const normalizedZip = normalizeZipcode(zipcode);
-    const entry = geocache[normalizedZip];
+//     const geocache: Record<string, GeocacheEntry> = JSON.parse(cache);
+//     const normalizedZip = normalizeZipcode(zipcode);
+//     const entry = geocache[normalizedZip];
 
-    if (entry && Date.now() < entry.expires) {
-      console.log(`🎯 Using cached coordinates for ${zipcode}: ${entry.coordinates.city}, ${entry.coordinates.state}`);
-      return {
-        ...entry.coordinates,
-        source: 'cache',
-        cached_date: new Date(entry.timestamp).toISOString()
-      };
-    }
+//     if (entry && Date.now() < entry.expires) {
+//       console.log(`🎯 Using cached coordinates for ${zipcode}: ${entry.coordinates.city}, ${entry.coordinates.state}`);
+//       return {
+//         ...entry.coordinates,
+//         source: 'cache',
+//         cached_date: new Date(entry.timestamp).toISOString()
+//       };
+//     }
 
-    // Remove expired entry
-    if (entry) {
-      delete geocache[normalizedZip];
-      localStorage.setItem(GEOCACHE_KEY, JSON.stringify(geocache));
-    }
+//     // Remove expired entry
+//     if (entry) {
+//       delete geocache[normalizedZip];
+//       localStorage.setItem(GEOCACHE_KEY, JSON.stringify(geocache));
+//     }
 
-    return null;
-  } catch (error) {
-    console.error('Error reading geocache:', error);
-    return null;
-  }
-}
+//     return null;
+//   } catch (error) {
+//     console.error('Error reading geocache:', error);
+//     return null;
+//   }
+// }
 
-/**
- * Cache coordinates for zipcode
- */
-function cacheCoordinates(zipcode: string, coordinates: CityCoordinates): void {
-  try {
-    const cache = localStorage.getItem(GEOCACHE_KEY);
-    const geocache: Record<string, GeocacheEntry> = cache ? JSON.parse(cache) : {};
+// /**
+//  * Cache coordinates for zipcode
+//  */
+// function cacheCoordinates(zipcode: string, coordinates: CityCoordinates): void {
+//   try {
+//     const cache = localStorage.getItem(GEOCACHE_KEY);
+//     const geocache: Record<string, GeocacheEntry> = cache ? JSON.parse(cache) : {};
     
-    const normalizedZip = normalizeZipcode(zipcode);
-    const now = Date.now();
+//     const normalizedZip = normalizeZipcode(zipcode);
+//     const now = Date.now();
 
-    geocache[normalizedZip] = {
-      coordinates,
-      timestamp: now,
-      expires: now + CACHE_DURATION
-    };
+//     geocache[normalizedZip] = {
+//       coordinates,
+//       timestamp: now,
+//       expires: now + CACHE_DURATION
+//     };
 
-    localStorage.setItem(GEOCACHE_KEY, JSON.stringify(geocache));
-    console.log(`💾 Cached coordinates for ${zipcode}: ${coordinates.city}, ${coordinates.state}`);
-  } catch (error) {
-    console.error('Error caching coordinates:', error);
-  }
-}
+//     localStorage.setItem(GEOCACHE_KEY, JSON.stringify(geocache));
+//     console.log(`💾 Cached coordinates for ${zipcode}: ${coordinates.city}, ${coordinates.state}`);
+//   } catch (error) {
+//     console.error('Error caching coordinates:', error);
+//   }
+// }
 
 /**
  * DEBUG VERSION: Geocode using Zippopotam.us API with detailed logging
@@ -175,11 +175,11 @@ export async function getCityCoordinatesFromZipcode(zipcode: string): Promise<Ci
 
   const normalizedZip = normalizeZipcode(zipcode);
 
-  // Step 2: Check cache first
-  const cached = getCachedCoordinates(normalizedZip);
-  if (cached) {
-    return cached;
-  }
+  // // Step 2: Check cache first
+  // const cached = getCachedCoordinates(normalizedZip);
+  // if (cached) {
+  //   return cached;
+  // }
 
   // Step 3: Get EXACT coordinates from Zippopotam API
   console.log(`🔄 Looking up exact city center for ${normalizedZip}...`);
@@ -195,10 +195,10 @@ export async function getCityCoordinatesFromZipcode(zipcode: string): Promise<Ci
     };
   }
 
-  // Cache successful results (except fallback)
-  if (coordinates.source !== 'fallback') {
-    cacheCoordinates(normalizedZip, coordinates);
-  }
+  // // Cache successful results (except fallback)
+  // if (coordinates.source !== 'fallback') {
+  //   cacheCoordinates(normalizedZip, coordinates);
+  // }
 
   console.log(`✅ Final coordinates for ${zipcode}: ${coordinates.city}, ${coordinates.state} (${coordinates.latitude}, ${coordinates.longitude})`);
   return coordinates;
