@@ -1,795 +1,19 @@
-// // Production-Ready DriverHome.tsx for Real Driving Tests
-// // Remove test mode entirely and optimize for real GPS tracking
-
-// import React, { useState, useRef, useEffect } from 'react';
-// import {
-//   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
-//   IonButton, IonText, IonAlert, IonCard, IonCardContent,
-//   IonCardHeader, IonCardTitle, IonProgressBar, IonLabel,
-//   IonButtons, IonIcon, IonBadge, IonChip, IonItem, IonList,
-//   IonItemDivider, IonModal, IonRange, IonSelect, IonSelectOption,
-//   IonInput, useIonToast
-// } from '@ionic/react';
-// import {
-//   logOutOutline, shieldCheckmarkOutline, settingsOutline,
-//   locationOutline, lockClosedOutline, alertCircleOutline,
-//   speedometerOutline, timeOutline
-// } from 'ionicons/icons';
-
-// import {
-//   validateGPSPoint,
-//   getUserBasePoint,
-//   getAnonymizedBasePoint,
-//   calculateUserSpecificDeltas,
-//   type EnhancedLocationPoint,
-//   type UserBasePoint
-// } from './EnhancedGPSProcessing';
-
-// import {
-//   getCityCoordinatesFromZipcode,
-//   validateZipcode,
-//   getGeocodeStats,
-//   type CityCoordinates
-// } from '../utils/geocoding';
-
-// interface DriverHomeProps {
-//   user: any;
-//   onSignOut?: () => void;
-// }
-
-// interface TripQualityMetrics {
-//   totalPoints: number;
-//   validPoints: number;
-//   rejectedPoints: number;
-//   averageAccuracy: number;
-//   speedDataQuality: number;
-//   stationaryPeriods: number;
-//   tripStartTime: string;
-//   currentSpeed: number;
-//   maxSpeed: number;
-//   avgSpeed: number;
-// }
-
-// interface PrivacySettings {
-//   anonymizationRadius: number;
-//   dataRetentionPeriod: number;
-//   consentLevel: 'full' | 'basic' | 'minimal';
-// }
-
-// const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
-//   const [tracking, setTracking] = useState(false);
-//   const [currentTrip, setCurrentTrip] = useState<string | null>(null);
-//   const [locationQueue, setLocationQueue] = useState<EnhancedLocationPoint[]>([]);
-//   const [error, setError] = useState('');
-//   const [showAlert, setShowAlert] = useState(false);
-//   const [uploading, setUploading] = useState(false);
-//   const [batchCount, setBatchCount] = useState(0);
-//   const [tripQuality, setTripQuality] = useState<TripQualityMetrics>({
-//     totalPoints: 0,
-//     validPoints: 0,
-//     rejectedPoints: 0,
-//     averageAccuracy: 0,
-//     speedDataQuality: 0,
-//     stationaryPeriods: 0,
-//     tripStartTime: '',
-//     currentSpeed: 0,
-//     maxSpeed: 0,
-//     avgSpeed: 0
-//   });
- 
-//   // Privacy Controls
-//   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
-//   const [basePoint, setBasePoint] = useState<UserBasePoint | null>(null);
-//   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
-//     anonymizationRadius: 10,
-//     dataRetentionPeriod: 12,
-//     consentLevel: 'full'
-//   });
-//   const [updatingPrivacy, setUpdatingPrivacy] = useState(false);
-
-//   // Zipcode Management States
-//   const [editingZipcode, setEditingZipcode] = useState(false);
-//   const [newZipcode, setNewZipcode] = useState('');
-//   const [newZipcodeValid, setNewZipcodeValid] = useState<boolean | null>(null);
-//   const [geocodingNewZipcode, setGeocodingNewZipcode] = useState(false);
-//   const [newBasePoint, setNewBasePoint] = useState<CityCoordinates | null>(null);
-
-//   const [present] = useIonToast();
-//   const watchIdRef = useRef<number | null>(null);
-//   const TRAJECTORY_LENGTH = 25;
-
-//   useEffect(() => {
-//     loadUserPrivacySettings();
-   
-//     return () => {
-//       if (watchIdRef.current !== null) {
-//         navigator.geolocation.clearWatch(watchIdRef.current);
-//       }
-//     };
-//   }, []);
-
-//   // Validate new zipcode in real-time
-//   useEffect(() => {
-//     if (newZipcode.trim() && editingZipcode) {
-//       const isValid = validateZipcode(newZipcode);
-//       setNewZipcodeValid(isValid);
-     
-//       if (isValid) {
-//         const timer = setTimeout(async () => {
-//           await performNewZipcodeGeocoding(newZipcode);
-//         }, 1000);
-       
-//         return () => clearTimeout(timer);
-//       } else {
-//         setNewBasePoint(null);
-//       }
-//     } else {
-//       setNewZipcodeValid(null);
-//       setNewBasePoint(null);
-//     }
-//   }, [newZipcode, editingZipcode]);
-
-//   const loadUserPrivacySettings = () => {
-//     try {
-//       const userBasePoint = getUserBasePoint();
-//       setBasePoint(userBasePoint);
-     
-//       if (user.privacySettings) {
-//         setPrivacySettings(user.privacySettings);
-//       }
-     
-//       console.log('🔒 Loaded user privacy settings:', {
-//         basePoint: userBasePoint,
-//         privacySettings: user.privacySettings
-//       });
-//     } catch (error) {
-//       console.error('Error loading privacy settings:', error);
-//     }
-//   };
-
-//   const performNewZipcodeGeocoding = async (zipcode: string) => {
-//     if (geocodingNewZipcode) return;
-   
-//     setGeocodingNewZipcode(true);
-//     try {
-//       const coordinates = await getCityCoordinatesFromZipcode(zipcode);
-//       setNewBasePoint(coordinates);
-//       console.log('🎯 New base point geocoded:', coordinates);
-//     } catch (error) {
-//       console.error('New zipcode geocoding error:', error);
-//       setError('Unable to locate city center for new zipcode. Please try a different zipcode.');
-//     } finally {
-//       setGeocodingNewZipcode(false);
-//     }
-//   };
-
-//   const startEditingZipcode = () => {
-//     setEditingZipcode(true);
-//     setNewZipcode(user.zipcode || '');
-//     setNewZipcodeValid(null);
-//     setNewBasePoint(null);
-//     setError('');
-//   };
-
-//   const cancelEditingZipcode = () => {
-//     setEditingZipcode(false);
-//     setNewZipcode('');
-//     setNewZipcodeValid(null);
-//     setNewBasePoint(null);
-//     setError('');
-//   };
-
-//   const updateZipcodeAndPrivacy = async () => {
-//     if (!newBasePoint || !newZipcode.trim()) {
-//       setError('Please enter a valid zipcode first');
-//       return;
-//     }
-
-//     setUpdatingPrivacy(true);
-//     try {
-//       const response = await fetch('https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/update-user-zipcode', {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         body: JSON.stringify({
-//           user_id: user.userId,
-//           zipcode: newZipcode.trim(),
-//           base_point: {
-//             latitude: newBasePoint.latitude,
-//             longitude: newBasePoint.longitude,
-//             city: newBasePoint.city,
-//             state: newBasePoint.state,
-//             source: newBasePoint.source,
-//             zipcode: newBasePoint.zipcode
-//           },
-//           privacy_settings: {
-//             anonymizationRadius: privacySettings.anonymizationRadius,
-//             dataRetentionPeriod: privacySettings.dataRetentionPeriod,
-//             consentLevel: privacySettings.consentLevel
-//           }
-//         })
-//       });
-
-//       if (!response.ok) {
-//         const errorData = await response.json();
-//         throw new Error(errorData.error || 'Failed to update zipcode');
-//       }
-
-//       const userData = JSON.parse(localStorage.getItem('privacyDriveUser') || '{}');
-//       userData.zipcode = newZipcode.trim();
-//       userData.basePoint = {
-//         latitude: newBasePoint.latitude,
-//         longitude: newBasePoint.longitude,
-//         city: newBasePoint.city,
-//         state: newBasePoint.state,
-//         source: newBasePoint.source,
-//         zipcode: newBasePoint.zipcode,
-//         anonymizationRadius: privacySettings.anonymizationRadius
-//       };
-//       userData.privacySettings = privacySettings;
-     
-//       localStorage.setItem('privacyDriveUser', JSON.stringify(userData));
-//       window.dispatchEvent(new CustomEvent('userDataUpdated'));
-     
-//       loadUserPrivacySettings();
-     
-//       console.log('✅ Zipcode updated successfully:', newBasePoint);
-//       setEditingZipcode(false);
-//       setNewZipcode('');
-//       setNewBasePoint(null);
-//       setError('');
-     
-//     } catch (error) {
-//       console.error('Error updating zipcode:', error);
-//       setError(error instanceof Error ? error.message : 'Failed to update zipcode');
-//     } finally {
-//       setUpdatingPrivacy(false);
-//     }
-//   };
-
-//   const generateTripId = (): string => {
-//     return `trip_${user.userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-//   };
-
-//   const calculateEnhancedDeltas = (queue: EnhancedLocationPoint[]): any[] => {
-//     if (queue.length < 2) return [];
-//     return calculateUserSpecificDeltas(queue);
-//   };
-
-//   const uploadBatch = async (queue: EnhancedLocationPoint[], tripId: string, batchNumber: number) => {
-//     try {
-//       setUploading(true);
-//       console.log(`🚀 Starting real driving batch upload for trip: ${tripId}, batch: ${batchNumber}`);
-     
-//       const deltas = calculateEnhancedDeltas(queue);
-
-//       if (deltas.length === 0) {
-//         console.log('❌ No deltas to upload');
-//         return;
-//       }
-
-//       const validPoints = queue.filter(p => p.isValid).length;
-//       const avgAccuracy = queue.reduce((sum, p) => sum + (p.accuracy || 0), 0) / queue.length;
-//       const speedQuality = deltas.filter(d => d.speed_confidence > 0.6).length / deltas.length;
-//       const currentBasePoint = getAnonymizedBasePoint();
-
-//       const payload = {
-//         user_id: user.userId,
-//         trip_id: tripId,
-//         batch_number: batchNumber,
-//         batch_size: queue.length,
-//         first_point_timestamp: queue[0].timestamp,
-//         last_point_timestamp: queue[queue.length - 1].timestamp,
-//         deltas: deltas,
-//         quality_metrics: {
-//           valid_points: validPoints,
-//           rejected_points: queue.length - validPoints,
-//           average_accuracy: Math.round(avgAccuracy * 100) / 100,
-//           speed_data_quality: Math.round(speedQuality * 100) / 100,
-//           gps_quality_score: Math.min(1, validPoints / queue.length),
-//           base_point_source: currentBasePoint.source,
-//           anonymization_applied: currentBasePoint.anonymizationRadius ? true : false,
-//           privacy_radius_miles: currentBasePoint.anonymizationRadius || 0,
-//           privacy_level: user.privacySettings?.consentLevel || 'full'
-//         }
-//       };
-
-//       console.log('📤 Uploading real driving batch with privacy protection:', {
-//         tripId,
-//         batchNumber,
-//         queueSize: queue.length,
-//         deltasCount: deltas.length,
-//         privacyRadius: currentBasePoint.anonymizationRadius,
-//         basePointSource: currentBasePoint.source
-//       });
-
-//       const response = await fetch('https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/store-trajectory-batch', {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         body: JSON.stringify(payload)
-//       });
-
-//       if (!response.ok) {
-//         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-//       }
-
-//       const result = await response.json();
-//       console.log('✅ Real driving batch uploaded with privacy protection:', result);
-
-//     } catch (err) {
-//       console.error('❌ Failed to upload batch:', err);
-//       setError(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-//     } finally {
-//       setUploading(false);
-//     }
-//   };
-
-//   const finalizeTripOnServer = async (tripId: string) => {
-//     try {
-//       console.log(`🏁 Finalizing real trip: ${tripId}`);
-     
-//       const response = await fetch('https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/finalize-trip', {
-//         method: 'POST',
-//         headers: { 'Content-Type': 'application/json' },
-//         body: JSON.stringify({
-//           user_id: user.userId,
-//           trip_id: tripId,
-//           end_timestamp: new Date().toISOString(),
-//           trip_quality: {
-//             ...tripQuality,
-//             privacy_protected: basePoint?.source !== 'fallback',
-//             base_point_city: basePoint?.city,
-//             anonymization_radius: basePoint?.anonymizationRadius
-//           }
-//         })
-//       });
-
-//       if (!response.ok) {
-//         throw new Error(`Failed to finalize trip: ${response.status}`);
-//       }
-
-//       console.log('✅ Real trip finalized successfully with privacy metadata');
-//     } catch (err) {
-//       console.error('❌ Failed to finalize trip:', err);
-//     }
-//   };
-
-//   const processLocationUpdate = async (position: GeolocationPosition) => {
-//     const latitude = position.coords.latitude;
-//     const longitude = position.coords.longitude;
-//     const accuracy = position.coords.accuracy || 0;
-//     const speed = position.coords.speed || undefined;
-
-//     const newPoint: EnhancedLocationPoint = {
-//       latitude,
-//       longitude,
-//       timestamp: new Date().toISOString(),
-//       accuracy,
-//       speed: speed || undefined,
-//       speedAccuracy: (position.coords as any).speedAccuracy || undefined
-//     };
-
-//     // Validate GPS point quality for real driving
-//     const lastValidPoint = locationQueue.length > 0 ? locationQueue[locationQueue.length - 1] : undefined;
-//     const isValid = validateGPSPoint(newPoint, lastValidPoint);
-//     newPoint.isValid = isValid;
-
-//     console.log('📍 Real GPS point received:', {
-//       isValid,
-//       lat: newPoint.latitude.toFixed(6),
-//       lon: newPoint.longitude.toFixed(6),
-//       accuracy: accuracy.toFixed(1) + 'm',
-//       speed: speed ? (speed * 2.237).toFixed(1) + ' mph' : 'no speed',
-//       basePointCity: basePoint?.city,
-//       privacyRadius: basePoint?.anonymizationRadius
-//     });
-
-//     // Update trip quality metrics
-//     setTripQuality(prev => {
-//       const currentSpeedMph = speed ? speed * 2.237 : 0;
-//       const newMetrics = {
-//         ...prev,
-//         totalPoints: prev.totalPoints + 1,
-//         validPoints: prev.validPoints + (isValid ? 1 : 0),
-//         rejectedPoints: prev.rejectedPoints + (isValid ? 0 : 1),
-//         averageAccuracy: ((prev.averageAccuracy * prev.totalPoints) + (accuracy || 0)) / (prev.totalPoints + 1),
-//         currentSpeed: currentSpeedMph,
-//         maxSpeed: Math.max(prev.maxSpeed, currentSpeedMph),
-//         avgSpeed: prev.totalPoints > 0 ? 
-//           ((prev.avgSpeed * (prev.totalPoints - 1)) + currentSpeedMph) / prev.totalPoints : 
-//           currentSpeedMph
-//       };
-//       return newMetrics;
-//     });
-
-//     if (!isValid) {
-//       console.log('❌ GPS point rejected due to quality issues');
-//       return;
-//     }
-
-//     setLocationQueue(prevQueue => {
-//       const updatedQueue = [...prevQueue, newPoint];
-//       console.log(`📊 Real driving queue length: ${updatedQueue.length}`);
-
-//       if (updatedQueue.length >= TRAJECTORY_LENGTH) {
-//         const batchToUpload = updatedQueue.slice(0, TRAJECTORY_LENGTH);
-//         const remainingQueue = updatedQueue.slice(TRAJECTORY_LENGTH);
-
-//         if (currentTrip) {
-//           console.log(`🚀 Auto-uploading real driving batch for trip: ${currentTrip}`);
-//           uploadBatch(batchToUpload, currentTrip, batchCount + 1);
-//           setBatchCount(prev => prev + 1);
-//         }
-
-//         return remainingQueue;
-//       }
-
-//       return updatedQueue;
-//     });
-
-//     setError('');
-//   };
-
-//   const toggleTracking = async () => {
-//     if (!tracking) {
-//       if (!navigator.geolocation) {
-//         setError('Geolocation is not supported by this device');
-//         return;
-//       }
-
-//       const tripId = generateTripId();
-//       console.log('🎯 Generated real trip ID:', tripId);
-//       console.log(`🔒 Using privacy base point: ${basePoint?.city}, ${basePoint?.state}`);
-     
-//       setCurrentTrip(tripId);
-//       setLocationQueue([]);
-//       setBatchCount(0);
-//       setTripQuality({
-//         totalPoints: 0,
-//         validPoints: 0,
-//         rejectedPoints: 0,
-//         averageAccuracy: 0,
-//         speedDataQuality: 0,
-//         stationaryPeriods: 0,
-//         tripStartTime: new Date().toISOString(),
-//         currentSpeed: 0,
-//         maxSpeed: 0,
-//         avgSpeed: 0
-//       });
-
-//       // PRODUCTION GPS OPTIONS - Optimized for real driving
-//       const options = {
-//         enableHighAccuracy: true,
-//         timeout: 15000,        // 15 second timeout
-//         maximumAge: 2000       // Use GPS readings up to 2 seconds old
-//       };
-
-//       watchIdRef.current = navigator.geolocation.watchPosition(
-//         processLocationUpdate,
-//         (error) => {
-//           console.error('Real GPS error:', error);
-//           setError(`GPS error: ${error.message}`);
-//           setShowAlert(true);
-//         },
-//         options
-//       );
-
-//       console.log('🚗 Started REAL DRIVING tracking with privacy protection, trip ID:', tripId);
-//       present({
-//         message: 'GPS tracking started! Drive safely.',
-//         duration: 2000,
-//         color: 'success'
-//       });
-//     } else {
-//       if (watchIdRef.current !== null) {
-//         navigator.geolocation.clearWatch(watchIdRef.current);
-//         watchIdRef.current = null;
-//       }
-
-//       if (locationQueue.length > 1 && currentTrip) {
-//         console.log('🏁 Uploading final real driving batch before stopping...');
-//         await uploadBatch(locationQueue, currentTrip, batchCount + 1);
-//         await finalizeTripOnServer(currentTrip);
-//       }
-
-//       setLocationQueue([]);
-//       setCurrentTrip(null);
-//       setBatchCount(0);
-//       setError('');
-//       console.log('🛑 Stopped real driving tracking');
-      
-//       present({
-//         message: 'Trip completed! Check your driving analysis.',
-//         duration: 3000,
-//         color: 'primary'
-//       });
-//     }
-
-//     setTracking(!tracking);
-//   };
-
-//   const handleSignOut = () => {
-//     if (tracking) {
-//       toggleTracking();
-//     }
-//     localStorage.removeItem('privacyDriveUser');
-//     if (onSignOut) {
-//       onSignOut();
-//     }
-//   };
-
-//   const getQualityColor = (percentage: number): string => {
-//     if (percentage >= 0.8) return 'success';
-//     if (percentage >= 0.6) return 'warning';
-//     return 'danger';
-//   };
-
-//   const getDataQualityScore = (): number => {
-//     if (tripQuality.totalPoints === 0) return 1;
-//     return tripQuality.validPoints / tripQuality.totalPoints;
-//   };
-
-//   const getPrivacyStatusColor = (): string => {
-//     if (!basePoint) return 'medium';
-//     if (basePoint.source === 'fallback') return 'warning';
-//     return 'success';
-//   };
-
-//   const updatePrivacySettings = async () => {
-//     setUpdatingPrivacy(true);
-//     try {
-//       const userData = JSON.parse(localStorage.getItem('privacyDriveUser') || '{}');
-//       userData.privacySettings = privacySettings;
-     
-//       if (basePoint && basePoint.source !== 'fallback') {
-//         userData.basePoint = {
-//           ...basePoint,
-//           anonymizationRadius: privacySettings.anonymizationRadius
-//         };
-//       }
-     
-//       localStorage.setItem('privacyDriveUser', JSON.stringify(userData));
-//       loadUserPrivacySettings();
-     
-//       console.log('✅ Privacy settings updated:', privacySettings);
-//       setShowPrivacyModal(false);
-//     } catch (error) {
-//       console.error('Error updating privacy settings:', error);
-//       setError('Failed to update privacy settings');
-//     } finally {
-//       setUpdatingPrivacy(false);
-//     }
-//   };
-
-//   const getTripDuration = (): string => {
-//     if (!tripQuality.tripStartTime) return '0:00';
-    
-//     const start = new Date(tripQuality.tripStartTime);
-//     const now = new Date();
-//     const diffMs = now.getTime() - start.getTime();
-//     const diffMinutes = Math.floor(diffMs / 60000);
-//     const diffSeconds = Math.floor((diffMs % 60000) / 1000);
-    
-//     return `${diffMinutes}:${diffSeconds.toString().padStart(2, '0')}`;
-//   };
-
-//   const geocodeStats = getGeocodeStats();
-
-//   return (
-//     <IonPage>
-//       <IonHeader>
-//         <IonToolbar>
-//           <IonTitle>Real Driving Test - {user?.name || 'Driver'}</IonTitle>
-//           <IonButtons slot="end">
-//             <IonButton onClick={() => setShowPrivacyModal(true)}>
-//               <IonIcon icon={settingsOutline} />
-//             </IonButton>
-//             <IonButton onClick={handleSignOut}>
-//               <IonIcon icon={logOutOutline} />
-//               Sign Out
-//             </IonButton>
-//           </IonButtons>
-//         </IonToolbar>
-//       </IonHeader>
-
-//       <IonContent className="ion-padding">
-//         <IonText>
-//           <h2>🚗 Real Driving Analysis</h2>
-//           <p>Test your driving with real GPS data. Your exact location is never stored - only encrypted movement patterns.</p>
-//         </IonText>
-
-//         {error && (
-//           <IonText color="danger">
-//             <p>{error}</p>
-//           </IonText>
-//         )}
-
-//         {/* Privacy Status Card */}
-//         <IonCard>
-//           <IonCardHeader>
-//             <IonCardTitle>
-//               <IonIcon icon={shieldCheckmarkOutline} style={{marginRight: '8px'}} />
-//               Privacy Protection Status
-//               <IonChip color={getPrivacyStatusColor()} style={{marginLeft: '10px'}}>
-//                 {basePoint?.source === 'fallback' ? 'Basic' : 'Enhanced'}
-//               </IonChip>
-//             </IonCardTitle>
-//           </IonCardHeader>
-//           <IonCardContent>
-//             {basePoint && (
-//               <>
-//                 <IonItem>
-//                   <IonIcon icon={locationOutline} slot="start" />
-//                   <IonLabel>
-//                     <h3>Anonymization Center</h3>
-//                     <p>{basePoint.city}, {basePoint.state}</p>
-//                     <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
-//                       Source: {basePoint.source === 'zippopotam' ? 'Zippopotam API' :
-//                                basePoint.source === 'cache' ? 'Cached' : 'Fallback'}
-//                     </p>
-//                   </IonLabel>
-//                 </IonItem>
-               
-//                 <IonItem>
-//                   <IonIcon icon={lockClosedOutline} slot="start" />
-//                   <IonLabel>
-//                     <h3>Privacy Radius</h3>
-//                     <p>{basePoint.anonymizationRadius || 0} mile{basePoint.anonymizationRadius !== 1 ? 's' : ''}</p>
-//                   </IonLabel>
-//                 </IonItem>
-//               </>
-//             )}
-//           </IonCardContent>
-//         </IonCard>
-
-//         {/* Real-Time Trip Status */}
-//         {tracking && (
-//           <IonCard>
-//             <IonCardHeader>
-//               <IonCardTitle color="success">🚗 Real Driving Active</IonCardTitle>
-//             </IonCardHeader>
-//             <IonCardContent>
-//               <IonList>
-//                 <IonItem>
-//                   <IonIcon icon={timeOutline} slot="start" />
-//                   <IonLabel>
-//                     <h3>Trip Duration</h3>
-//                     <p>{getTripDuration()}</p>
-//                   </IonLabel>
-//                 </IonItem>
-                
-//                 <IonItem>
-//                   <IonIcon icon={speedometerOutline} slot="start" />
-//                   <IonLabel>
-//                     <h3>Current Speed</h3>
-//                     <p>{tripQuality.currentSpeed.toFixed(1)} mph</p>
-//                   </IonLabel>
-//                 </IonItem>
-                
-//                 <IonItem>
-//                   <IonIcon icon={speedometerOutline} slot="start" />
-//                   <IonLabel>
-//                     <h3>Max Speed</h3>
-//                     <p>{tripQuality.maxSpeed.toFixed(1)} mph</p>
-//                   </IonLabel>
-//                 </IonItem>
-//               </IonList>
-
-//               <div style={{ marginTop: '1rem' }}>
-//                 <h4>GPS Data Quality</h4>
-//                 <p><strong>Trip ID:</strong> {currentTrip}</p>
-//                 <p><strong>GPS Points:</strong> {locationQueue.length}/{TRAJECTORY_LENGTH}</p>
-//                 <p><strong>Batches Uploaded:</strong> {batchCount}</p>
-//                 <p>
-//                   <strong>GPS Quality:</strong>
-//                   <IonBadge color={getQualityColor(getDataQualityScore())} style={{ marginLeft: '0.5rem' }}>
-//                     {Math.round(getDataQualityScore() * 100)}%
-//                   </IonBadge>
-//                 </p>
-//                 <p><strong>Total Points:</strong> {tripQuality.totalPoints}</p>
-//                 <p><strong>Valid Points:</strong> {tripQuality.validPoints}</p>
-//                 <p><strong>Rejected Points:</strong> {tripQuality.rejectedPoints}</p>
-//                 {tripQuality.averageAccuracy > 0 && (
-//                   <p><strong>Avg GPS Accuracy:</strong> {tripQuality.averageAccuracy.toFixed(1)}m</p>
-//                 )}
-//               </div>
-
-//               {uploading && (
-//                 <>
-//                   <IonLabel>Uploading real driving batch with privacy protection...</IonLabel>
-//                   <IonProgressBar type="indeterminate"></IonProgressBar>
-//                 </>
-//               )}
-//             </IonCardContent>
-//           </IonCard>
-//         )}
-
-//         {/* Main Control */}
-//         <IonCard>
-//           <IonCardContent>
-//             <IonButton
-//               expand="block"
-//               onClick={toggleTracking}
-//               color={tracking ? 'danger' : 'primary'}
-//               disabled={uploading}
-//               size="large"
-//             >
-//               {tracking ? '🛑 Stop Real Driving Test' : '🚗 Start Real Driving Test'}
-//             </IonButton>
-            
-//             {!tracking && (
-//               <IonText style={{ display: 'block', textAlign: 'center', marginTop: '10px' }}>
-//                 <p style={{ fontSize: '0.9em', color: 'var(--ion-color-medium)' }}>
-//                   Start tracking before you begin driving. The app will analyze your speed consistency, 
-//                   acceleration patterns, and turning behavior while protecting your privacy.
-//                 </p>
-//               </IonText>
-//             )}
-//           </IonCardContent>
-//         </IonCard>
-
-//         {/* Instructions */}
-//         <IonCard>
-//           <IonCardHeader>
-//             <IonCardTitle>🔍 How to Test</IonCardTitle>
-//           </IonCardHeader>
-//           <IonCardContent>
-//             <IonText>
-//               <ol>
-//                 <li><strong>Start tracking</strong> before you begin driving</li>
-//                 <li><strong>Drive normally</strong> for at least 2-3 minutes</li>
-//                 <li><strong>Try different scenarios:</strong>
-//                   <ul>
-//                     <li>Highway driving (steady speeds)</li>
-//                     <li>City driving (stop and go)</li>
-//                     <li>Aggressive driving (rapid speed changes)</li>
-//                   </ul>
-//                 </li>
-//                 <li><strong>Stop tracking</strong> when finished</li>
-//                 <li><strong>Check your score</strong> with the insurance provider view</li>
-//               </ol>
-//               <p><strong>Expected Results:</strong></p>
-//               <ul>
-//                 <li>Smooth highway driving: 80-95 score</li>
-//                 <li>Normal city driving: 65-80 score</li>
-//                 <li>Aggressive driving: 30-60 score</li>
-//               </ul>
-//             </IonText>
-//           </IonCardContent>
-//         </IonCard>
-
-//         {/* Privacy Settings Modal - keeping same as before */}
-//         <IonModal isOpen={showPrivacyModal} onDidDismiss={() => setShowPrivacyModal(false)}>
-//           {/* Same privacy modal content as before */}
-//         </IonModal>
-
-//         <IonAlert
-//           isOpen={showAlert}
-//           onDidDismiss={() => setShowAlert(false)}
-//           header="GPS Error"
-//           message={error}
-//           buttons={['OK']}
-//         />
-//       </IonContent>
-//     </IonPage>
-//   );
-// };
-
-// export default DriverHome;
-
-// FIXED DriverHome.tsx - Complete Settings Modal Implementation
+// MODERN Professional Driver Dashboard - Complete Implementation
 import React, { useState, useRef, useEffect } from 'react';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
   IonButton, IonText, IonAlert, IonCard, IonCardContent,
   IonCardHeader, IonCardTitle, IonProgressBar, IonLabel,
   IonButtons, IonIcon, IonBadge, IonChip, IonItem, IonList,
-  IonItemDivider, IonModal, IonRange, IonSelect, IonSelectOption,
-  IonInput, useIonToast
+  IonModal, IonRange, IonSelect, IonSelectOption,
+  IonInput, useIonToast, IonGrid, IonRow, IonCol
 } from '@ionic/react';
 import {
   logOutOutline, shieldCheckmarkOutline, settingsOutline,
   locationOutline, lockClosedOutline, alertCircleOutline,
-  speedometerOutline, timeOutline, saveOutline, closeOutline
+  speedometerOutline, timeOutline, saveOutline, closeOutline,
+  playOutline, stopOutline, trashOutline, warningOutline,
+  checkmarkCircle, informationCircle, keyOutline
 } from 'ionicons/icons';
 import {
   validateGPSPoint,
@@ -851,8 +75,8 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     avgSpeed: 0
   });
 
-  // Privacy Controls
-  const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  // Settings Modal and Privacy Controls
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [basePoint, setBasePoint] = useState<UserBasePoint | null>(null);
   const [privacySettings, setPrivacySettings] = useState<PrivacySettings>({
     anonymizationRadius: 10,
@@ -867,6 +91,12 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
   const [newZipcodeValid, setNewZipcodeValid] = useState<boolean | null>(null);
   const [geocodingNewZipcode, setGeocodingNewZipcode] = useState(false);
   const [newBasePoint, setNewBasePoint] = useState<CityCoordinates | null>(null);
+
+  // Delete Account States - SIMPLIFIED
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deletePassword, setDeletePassword] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteStep, setDeleteStep] = useState<'password' | 'confirm'>('password');
 
   const [present] = useIonToast();
   const watchIdRef = useRef<number | null>(null);
@@ -1013,7 +243,7 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       setError('');
       
       present({
-        message: 'Privacy settings updated successfully!',
+        message: 'Location settings updated successfully!',
         duration: 2000,
         color: 'success'
       });
@@ -1059,8 +289,144 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     }
   };
 
-  // ... (keep all other existing functions like generateTripId, uploadBatch, etc. unchanged)
+  // DELETE ACCOUNT FUNCTIONALITY - FIXED WITH MODAL
+  const handleDeleteAccountRequest = () => {
+    setDeleteStep('password');
+    setDeletePassword('');
+    setShowDeleteModal(true);
+  };
 
+  const handlePasswordSubmit = () => {
+    if (!deletePassword.trim()) {
+      setError('Password is required');
+      return;
+    }
+    setDeleteStep('confirm');
+  };
+
+  const handleDeleteAccountConfirm = async () => {
+    if (!deletePassword.trim()) {
+      setError('Password is required to delete your account');
+      return;
+    }
+
+    setDeletingAccount(true);
+    
+    // Enhanced debug logging
+    console.log('🗑️ Delete Account Debug:', {
+      userEmail: user?.email,
+      userUserEmail: user?.user_email,
+      userId: user?.userId,
+      userUserId: user?.user_id,
+      hasPassword: !!deletePassword.trim(),
+      passwordLength: deletePassword.trim().length,
+      fullUserObject: user
+    });
+
+    try {
+      // Try multiple email field variations
+      const emailToUse = user?.email || user?.user_email || user?.Email || '';
+      const userIdToUse = user?.userId || user?.user_id || user?.id || '';
+      
+      const requestBody = {
+        mode: 'delete_account',
+        email: emailToUse,
+        user_id: userIdToUse,
+        password: deletePassword.trim()
+      };
+
+      console.log('🚀 Sending delete request to:', 'https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user');
+      console.log('🚀 Request body (password hidden):', {
+        ...requestBody,
+        password: '[HIDDEN]'
+      });
+
+      const response = await fetch('https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/auth-user', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+      });
+
+      console.log('📡 Delete response status:', response.status);
+      console.log('📡 Delete response headers:', Object.fromEntries(response.headers.entries()));
+
+      let data;
+      try {
+        const responseText = await response.text();
+        console.log('📄 Raw response text:', responseText);
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('❌ Failed to parse response as JSON:', parseError);
+        throw new Error('Invalid response from server');
+      }
+
+      console.log('📊 Delete response data:', data);
+
+      if (!response.ok) {
+        console.error('❌ Delete failed:', {
+          status: response.status,
+          statusText: response.statusText,
+          data: data
+        });
+        throw new Error(data.error || `HTTP ${response.status}: Delete failed`);
+      }
+
+      // Account successfully deleted
+      console.log('✅ Account deleted successfully:', data);
+      
+      // Close modal
+      setShowDeleteModal(false);
+      
+      present({
+        message: 'Account deleted successfully. You will be signed out.',
+        duration: 3000,
+        color: 'success'
+      });
+
+      // Clear local data and sign out immediately
+      localStorage.removeItem('privacyDriveUser');
+      
+      // Sign out immediately to go back to signup page
+      if (onSignOut) {
+        console.log('🚪 Calling onSignOut to return to signup page');
+        onSignOut();
+      } else {
+        console.warn('⚠️ onSignOut function not available');
+      }
+
+    } catch (error: any) {
+      console.error('❌ Delete account error details:', {
+        error: error,
+        message: error.message,
+        stack: error.stack
+      });
+      
+      const errorMessage = error instanceof Error ? error.message : 'Failed to delete account';
+      setError(errorMessage);
+      
+      // Show error in toast as well
+      present({
+        message: `Delete failed: ${errorMessage}`,
+        duration: 5000,
+        color: 'danger'
+      });
+    } finally {
+      setDeletingAccount(false);
+    }
+  };
+
+  const cancelDeleteAccount = () => {
+    setDeletePassword('');
+    setShowDeleteModal(false);
+    setDeleteStep('password');
+    setDeletingAccount(false);
+    setError('');
+  };
+
+  // GPS and Trip Functions
   const generateTripId = (): string => {
     return `trip_${user.userId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   };
@@ -1172,22 +538,10 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       speedAccuracy: (position.coords as any).speedAccuracy || undefined
     };
 
-    // Validate GPS point quality for real driving
     const lastValidPoint = locationQueue.length > 0 ? locationQueue[locationQueue.length - 1] : undefined;
     const isValid = validateGPSPoint(newPoint, lastValidPoint);
     newPoint.isValid = isValid;
 
-    console.log('📍 Real GPS point received:', {
-      isValid,
-      lat: newPoint.latitude.toFixed(6),
-      lon: newPoint.longitude.toFixed(6),
-      accuracy: accuracy.toFixed(1) + 'm',
-      speed: speed ? (speed * 2.237).toFixed(1) + ' mph' : 'no speed',
-      basePointCity: basePoint?.city,
-      privacyRadius: basePoint?.anonymizationRadius
-    });
-
-    // Update trip quality metrics
     setTripQuality(prev => {
       const currentSpeedMph = speed ? speed * 2.237 : 0;
       const newMetrics = {
@@ -1205,21 +559,16 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       return newMetrics;
     });
 
-    if (!isValid) {
-      console.log('❌ GPS point rejected due to quality issues');
-      return;
-    }
+    if (!isValid) return;
 
     setLocationQueue(prevQueue => {
       const updatedQueue = [...prevQueue, newPoint];
-      console.log(`📊 Real driving queue length: ${updatedQueue.length}`);
 
       if (updatedQueue.length >= TRAJECTORY_LENGTH) {
         const batchToUpload = updatedQueue.slice(0, TRAJECTORY_LENGTH);
         const remainingQueue = updatedQueue.slice(TRAJECTORY_LENGTH);
 
         if (currentTrip) {
-          console.log(`🚀 Auto-uploading real driving batch for trip: ${currentTrip}`);
           uploadBatch(batchToUpload, currentTrip, batchCount + 1);
           setBatchCount(prev => prev + 1);
         }
@@ -1241,9 +590,6 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       }
 
       const tripId = generateTripId();
-      console.log('🎯 Generated real trip ID:', tripId);
-      console.log(`🔒 Using privacy base point: ${basePoint?.city}, ${basePoint?.state}`);
-      
       setCurrentTrip(tripId);
       setLocationQueue([]);
       setBatchCount(0);
@@ -1260,11 +606,10 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
         avgSpeed: 0
       });
 
-      // PRODUCTION GPS OPTIONS - Optimized for real driving
       const options = {
         enableHighAccuracy: true,
-        timeout: 15000, // 15 second timeout
-        maximumAge: 2000 // Use GPS readings up to 2 seconds old
+        timeout: 15000,
+        maximumAge: 2000
       };
 
       watchIdRef.current = navigator.geolocation.watchPosition(
@@ -1277,7 +622,6 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
         options
       );
 
-      console.log('🚗 Started REAL DRIVING tracking with privacy protection, trip ID:', tripId);
       present({
         message: 'GPS tracking started! Drive safely.',
         duration: 2000,
@@ -1290,7 +634,6 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       }
 
       if (locationQueue.length > 1 && currentTrip) {
-        console.log('🏁 Uploading final real driving batch before stopping...');
         await uploadBatch(locationQueue, currentTrip, batchCount + 1);
         await finalizeTripOnServer(currentTrip);
       }
@@ -1299,7 +642,6 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       setCurrentTrip(null);
       setBatchCount(0);
       setError('');
-      console.log('🛑 Stopped real driving tracking');
       
       present({
         message: 'Trip completed! Check your driving analysis.',
@@ -1320,6 +662,7 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     }
   };
 
+  // Utility Functions
   const getQualityColor = (percentage: number): string => {
     if (percentage >= 0.8) return 'success';
     if (percentage >= 0.6) return 'warning';
@@ -1354,454 +697,808 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
   return (
     <IonPage>
       <IonHeader>
-        <IonToolbar>
-          <IonTitle>Real Driving Test - {user?.name || 'Driver'}</IonTitle>
+        <IonToolbar color="light">
+          <IonTitle style={{ color: '#2c3e50', fontWeight: '600' }}>
+            Driver Dashboard - {user?.name || 'Driver'}
+          </IonTitle>
           <IonButtons slot="end">
-            <IonButton onClick={() => setShowPrivacyModal(true)}>
+            <IonButton fill="clear" onClick={() => setShowSettingsModal(true)} style={{ color: '#6c757d' }}>
               <IonIcon icon={settingsOutline} />
             </IonButton>
-            <IonButton onClick={handleSignOut}>
+            <IonButton fill="clear" onClick={handleSignOut} style={{ color: '#6c757d' }}>
               <IonIcon icon={logOutOutline} />
-              Sign Out
+              <IonLabel style={{ marginLeft: '4px' }}>Sign Out</IonLabel>
             </IonButton>
           </IonButtons>
         </IonToolbar>
       </IonHeader>
 
-      <IonContent className="ion-padding">
-        <IonText>
-          <h2>🚗 Real Driving Analysis</h2>
-          <p>Test your driving with real GPS data. Your exact location is never stored - only encrypted movement patterns.</p>
-        </IonText>
+      <IonContent style={{ '--background': '#f8f9fa' }}>
+        <div style={{ padding: '20px', maxWidth: '1000px', margin: '0 auto' }}>
+          
+          {/* Welcome Section */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            border: '1px solid #e9ecef'
+          }}>
+            <h2 style={{ margin: '0 0 8px 0', color: '#2c3e50', fontSize: '1.5rem', fontWeight: '600' }}>
+              🚗 Privacy-Protected Driving Analysis
+            </h2>
+            <p style={{ margin: '0', color: '#6c757d', fontSize: '1rem' }}>
+              Test your driving behavior with real GPS data. Your exact location is never stored - only encrypted movement patterns for insurance analysis.
+            </p>
+          </div>
 
-        {error && (
-          <IonText color="danger">
-            <p>{error}</p>
-          </IonText>
-        )}
+          {error && (
+            <div style={{
+              backgroundColor: '#fff5f5',
+              border: '1px solid #feb2b2',
+              borderRadius: '12px',
+              padding: '16px',
+              marginBottom: '20px',
+              color: '#c53030'
+            }}>
+              <IonIcon icon={warningOutline} style={{ marginRight: '8px' }} />
+              {error}
+            </div>
+          )}
 
-        {/* Privacy Status Card */}
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>
-              <IonIcon icon={shieldCheckmarkOutline} style={{marginRight: '8px'}} />
-              Privacy Protection Status
-              <IonChip color={getPrivacyStatusColor()} style={{marginLeft: '10px'}}>
-                {basePoint?.source === 'fallback' ? 'Basic' : 'Enhanced'}
-              </IonChip>
-            </IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            {basePoint && (
-              <>
-                <IonItem>
-                  <IonIcon icon={locationOutline} slot="start" />
-                  <IonLabel>
-                    <h3>Anonymization Center</h3>
-                    <p>{basePoint.city}, {basePoint.state}</p>
-                    <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
-                      Source: {basePoint.source === 'zippopotam' ? 'Zippopotam API' :
-                               basePoint.source === 'cache' ? 'Cached' : 'Fallback'}
-                    </p>
-                  </IonLabel>
-                </IonItem>
-                
-                <IonItem>
-                  <IonIcon icon={lockClosedOutline} slot="start" />
-                  <IonLabel>
-                    <h3>Privacy Radius</h3>
-                    <p>{basePoint.anonymizationRadius || 0} mile{basePoint.anonymizationRadius !== 1 ? 's' : ''}</p>
-                  </IonLabel>
-                </IonItem>
-              </>
-            )}
-          </IonCardContent>
-        </IonCard>
-
-        {/* Real-Time Trip Status */}
-        {tracking && (
-          <IonCard>
-            <IonCardHeader>
-              <IonCardTitle color="success">🚗 Real Driving Active</IonCardTitle>
-            </IonCardHeader>
-            <IonCardContent>
-              <IonList>
-                <IonItem>
-                  <IonIcon icon={timeOutline} slot="start" />
-                  <IonLabel>
-                    <h3>Trip Duration</h3>
-                    <p>{getTripDuration()}</p>
-                  </IonLabel>
-                </IonItem>
-                
-                <IonItem>
-                  <IonIcon icon={speedometerOutline} slot="start" />
-                  <IonLabel>
-                    <h3>Current Speed</h3>
-                    <p>{tripQuality.currentSpeed.toFixed(1)} mph</p>
-                  </IonLabel>
-                </IonItem>
-                
-                <IonItem>
-                  <IonIcon icon={speedometerOutline} slot="start" />
-                  <IonLabel>
-                    <h3>Max Speed</h3>
-                    <p>{tripQuality.maxSpeed.toFixed(1)} mph</p>
-                  </IonLabel>
-                </IonItem>
-              </IonList>
-
-              <div style={{ marginTop: '1rem' }}>
-                <h4>GPS Data Quality</h4>
-                <p><strong>Trip ID:</strong> {currentTrip}</p>
-                <p><strong>GPS Points:</strong> {locationQueue.length}/{TRAJECTORY_LENGTH}</p>
-                <p><strong>Batches Uploaded:</strong> {batchCount}</p>
-                <p>
-                  <strong>GPS Quality:</strong>
-                  <IonBadge color={getQualityColor(getDataQualityScore())} style={{ marginLeft: '0.5rem' }}>
-                    {Math.round(getDataQualityScore() * 100)}%
-                  </IonBadge>
-                </p>
-                <p><strong>Total Points:</strong> {tripQuality.totalPoints}</p>
-                <p><strong>Valid Points:</strong> {tripQuality.validPoints}</p>
-                <p><strong>Rejected Points:</strong> {tripQuality.rejectedPoints}</p>
-                {tripQuality.averageAccuracy > 0 && (
-                  <p><strong>Avg GPS Accuracy:</strong> {tripQuality.averageAccuracy.toFixed(1)}m</p>
-                )}
+          {/* Privacy Status */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            border: '1px solid #e9ecef'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
+              <IonIcon icon={shieldCheckmarkOutline} style={{ fontSize: '1.5rem', marginRight: '12px', color: '#28a745' }} />
+              <h3 style={{ margin: '0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                Privacy Protection Status
+              </h3>
+              <div style={{
+                marginLeft: 'auto',
+                padding: '4px 12px',
+                backgroundColor: getPrivacyStatusColor() === 'success' ? '#d4edda' : '#fff3cd',
+                color: getPrivacyStatusColor() === 'success' ? '#155724' : '#856404',
+                borderRadius: '20px',
+                fontSize: '0.85rem',
+                fontWeight: '600'
+              }}>
+                {basePoint?.source === 'fallback' ? 'Basic Protection' : 'Enhanced Protection'}
               </div>
+            </div>
+            
+            {basePoint && (
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+                <div>
+                  <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Anonymization Center</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>
+                    {basePoint.city}, {basePoint.state}
+                  </div>
+                  <div style={{ color: '#6c757d', fontSize: '0.8rem' }}>
+                    Source: {basePoint.source === 'zippopotam' ? 'Verified API' : basePoint.source}
+                  </div>
+                </div>
+                <div>
+                  <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Privacy Radius</div>
+                  <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>
+                    {basePoint.anonymizationRadius || 0} miles
+                  </div>
+                  <div style={{ color: '#6c757d', fontSize: '0.8rem' }}>
+                    Location anonymization range
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
 
-              {uploading && (
-                <>
-                  <IonLabel>Uploading real driving batch with privacy protection...</IonLabel>
-                  <IonProgressBar type="indeterminate"></IonProgressBar>
-                </>
-              )}
-            </IonCardContent>
-          </IonCard>
-        )}
-
-        {/* Main Control */}
-        <IonCard>
-          <IonCardContent>
+          {/* Trip Tracking Controls */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            marginBottom: '20px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            border: '1px solid #e9ecef'
+          }}>
+            <h3 style={{ margin: '0 0 20px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+              Driving Test Controls
+            </h3>
+            
             <IonButton
               expand="block"
               onClick={toggleTracking}
-              color={tracking ? 'danger' : 'primary'}
               disabled={uploading}
-              size="large"
+              style={{
+                '--background': tracking ? '#dc3545' : '#007bff',
+                '--color': 'white',
+                '--border-radius': '12px',
+                '--padding-top': '16px',
+                '--padding-bottom': '16px',
+                fontSize: '1.1rem',
+                fontWeight: '600',
+                marginBottom: '16px'
+              }}
             >
-              {tracking ? '🛑 Stop Real Driving Test' : '🚗 Start Real Driving Test'}
+              <IonIcon icon={tracking ? stopOutline : playOutline} slot="start" />
+              {tracking ? 'Stop Driving Test' : 'Start Driving Test'}
             </IonButton>
             
             {!tracking && (
-              <IonText style={{ display: 'block', textAlign: 'center', marginTop: '10px' }}>
-                <p style={{ fontSize: '0.9em', color: 'var(--ion-color-medium)' }}>
-                  Start tracking before you begin driving. The app will analyze your speed consistency,
-                  acceleration patterns, and turning behavior while protecting your privacy.
+              <div style={{
+                padding: '16px',
+                backgroundColor: '#f8f9fa',
+                borderRadius: '8px',
+                fontSize: '0.9rem',
+                color: '#6c757d',
+                textAlign: 'center'
+              }}>
+                <p style={{ margin: '0 0 8px 0', fontWeight: '500', color: '#495057' }}>
+                  📱 Testing Instructions
                 </p>
-              </IonText>
+                <p style={{ margin: '0' }}>
+                  Start tracking before driving. The app analyzes speed consistency, acceleration patterns, 
+                  and turning behavior while protecting your privacy through location anonymization.
+                </p>
+              </div>
             )}
-          </IonCardContent>
-        </IonCard>
+          </div>
 
-        {/* Instructions */}
-        <IonCard>
-          <IonCardHeader>
-            <IonCardTitle>🔍 How to Test</IonCardTitle>
-          </IonCardHeader>
-          <IonCardContent>
-            <IonText>
-              <ol>
-                <li><strong>Start tracking</strong> before you begin driving</li>
-                <li><strong>Drive normally</strong> for at least 2-3 minutes</li>
-                <li><strong>Try different scenarios:</strong>
-                  <ul>
-                    <li>Highway driving (steady speeds)</li>
-                    <li>City driving (stop and go)</li>
-                    <li>Aggressive driving (rapid speed changes)</li>
-                  </ul>
-                </li>
-                <li><strong>Stop tracking</strong> when finished</li>
-                <li><strong>Check your score</strong> with the insurance provider view</li>
-              </ol>
-              <p><strong>Expected Results:</strong></p>
-              <ul>
-                <li>Smooth highway driving: 80-95 score</li>
-                <li>Normal city driving: 65-80 score</li>
-                <li>Aggressive driving: 30-60 score</li>
-              </ul>
-            </IonText>
-          </IonCardContent>
-        </IonCard>
+          {/* Active Trip Status */}
+          {tracking && (
+            <div style={{
+              backgroundColor: 'white',
+              borderRadius: '12px',
+              padding: '24px',
+              marginBottom: '20px',
+              boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+              border: '2px solid #28a745'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', marginBottom: '20px' }}>
+                <div style={{
+                  width: '12px',
+                  height: '12px',
+                  backgroundColor: '#28a745',
+                  borderRadius: '50%',
+                  marginRight: '12px',
+                  animation: 'pulse 2s infinite'
+                }}></div>
+                <h3 style={{ margin: '0', color: '#28a745', fontSize: '1.2rem', fontWeight: '600' }}>
+                  🚗 Trip Active - {currentTrip?.slice(-8)}
+                </h3>
+              </div>
 
-        {/* FIXED Privacy Settings Modal - Complete Implementation */}
-        <IonModal isOpen={showPrivacyModal} onDidDismiss={() => setShowPrivacyModal(false)}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px', marginBottom: '20px' }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Duration</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#2c3e50' }}>{getTripDuration()}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Current Speed</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#2c3e50' }}>{tripQuality.currentSpeed.toFixed(1)} mph</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Max Speed</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: '#2c3e50' }}>{tripQuality.maxSpeed.toFixed(1)} mph</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>GPS Quality</div>
+                  <div style={{ fontSize: '1.4rem', fontWeight: '700', color: getQualityColor(getDataQualityScore()) === 'success' ? '#28a745' : getQualityColor(getDataQualityScore()) === 'warning' ? '#ffc107' : '#dc3545' }}>
+                    {Math.round(getDataQualityScore() * 100)}%
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ padding: '16px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: '12px', fontSize: '0.85rem' }}>
+                  <div><strong>GPS Points:</strong> {locationQueue.length}/{TRAJECTORY_LENGTH}</div>
+                  <div><strong>Batches:</strong> {batchCount}</div>
+                  <div><strong>Total Points:</strong> {tripQuality.totalPoints}</div>
+                  <div><strong>Valid Points:</strong> {tripQuality.validPoints}</div>
+                  <div><strong>Rejected:</strong> {tripQuality.rejectedPoints}</div>
+                  {tripQuality.averageAccuracy > 0 && (
+                    <div><strong>Accuracy:</strong> {tripQuality.averageAccuracy.toFixed(1)}m</div>
+                  )}
+                </div>
+              </div>
+
+              {uploading && (
+                <div style={{ marginTop: '16px' }}>
+                  <div style={{ color: '#6c757d', fontSize: '0.9rem', marginBottom: '8px' }}>
+                    Uploading batch with privacy protection...
+                  </div>
+                  <IonProgressBar type="indeterminate" style={{ '--background': '#e9ecef' }}></IonProgressBar>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Testing Scenarios */}
+          <div style={{
+            backgroundColor: 'white',
+            borderRadius: '12px',
+            padding: '24px',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+            border: '1px solid #e9ecef'
+          }}>
+            <h3 style={{ margin: '0 0 20px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+              🎯 Testing Scenarios
+            </h3>
+            
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '16px' }}>
+              <div style={{ padding: '16px', backgroundColor: '#e8f5e8', borderRadius: '8px', border: '1px solid #c3e6c3' }}>
+                <h4 style={{ margin: '0 0 8px 0', color: '#155724', fontSize: '1rem', fontWeight: '600' }}>
+                  🛣️ Highway Driving
+                </h4>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#155724' }}>
+                  Steady speeds, minimal lane changes
+                </p>
+                <div style={{ fontSize: '0.8rem', color: '#6c757d' }}>
+                  <strong>Expected Score:</strong> 80-95
+                </div>
+              </div>
+              
+              <div style={{ padding: '16px', backgroundColor: '#fff3cd', borderRadius: '8px', border: '1px solid #ffeaa7' }}>
+                <h4 style={{ margin: '0 0 8px 0', color: '#856404', fontSize: '1rem', fontWeight: '600' }}>
+                  🏙️ City Driving
+                </h4>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#856404' }}>
+                  Stop and go, normal acceleration
+                </p>
+                <div style={{ fontSize: '0.8rem', color: '#6c757d' }}>
+                  <strong>Expected Score:</strong> 65-80
+                </div>
+              </div>
+              
+              <div style={{ padding: '16px', backgroundColor: '#f8d7da', borderRadius: '8px', border: '1px solid #f5c6cb' }}>
+                <h4 style={{ margin: '0 0 8px 0', color: '#721c24', fontSize: '1rem', fontWeight: '600' }}>
+                  ⚡ Aggressive Test
+                </h4>
+                <p style={{ margin: '0 0 8px 0', fontSize: '0.85rem', color: '#721c24' }}>
+                  Rapid speed changes, hard braking
+                </p>
+                <div style={{ fontSize: '0.8rem', color: '#6c757d' }}>
+                  <strong>Expected Score:</strong> 30-60
+                </div>
+              </div>
+            </div>
+            
+            <div style={{
+              marginTop: '16px',
+              padding: '12px',
+              backgroundColor: '#d1ecf1',
+              borderRadius: '6px',
+              fontSize: '0.85rem',
+              color: '#0c5460'
+            }}>
+              <IonIcon icon={informationCircle} style={{ marginRight: '6px' }} />
+              <strong>Tip:</strong> Drive for at least 2-3 minutes to generate enough data for accurate analysis.
+            </div>
+          </div>
+
+        </div>
+
+        {/* MODERN Settings Modal with Delete Account */}
+        <IonModal isOpen={showSettingsModal} onDidDismiss={() => setShowSettingsModal(false)}>
           <IonHeader>
-            <IonToolbar>
-              <IonTitle>Privacy & Settings</IonTitle>
+            <IonToolbar color="light">
+              <IonTitle style={{ color: '#2c3e50', fontWeight: '600' }}>
+                Account Settings
+              </IonTitle>
               <IonButtons slot="end">
-                <IonButton onClick={() => setShowPrivacyModal(false)}>
+                <IonButton fill="clear" onClick={() => setShowSettingsModal(false)} style={{ color: '#6c757d' }}>
                   <IonIcon icon={closeOutline} />
                 </IonButton>
               </IonButtons>
             </IonToolbar>
           </IonHeader>
           
-          <IonContent className="ion-padding">
-            {/* Current Privacy Status */}
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>
-                  <IonIcon icon={shieldCheckmarkOutline} style={{marginRight: '8px'}} />
-                  Current Privacy Protection
-                </IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                {basePoint ? (
-                  <>
-                    <IonItem>
-                      <IonIcon icon={locationOutline} slot="start" />
-                      <IonLabel>
-                        <h3>Base Location</h3>
-                        <p>{basePoint.city}, {basePoint.state}</p>
-                        <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
-                          Zipcode: {user.zipcode || 'Not set'}
-                        </p>
-                      </IonLabel>
-                    </IonItem>
-                    
-                    <IonItem>
-                      <IonIcon icon={lockClosedOutline} slot="start" />
-                      <IonLabel>
-                        <h3>Anonymization Radius</h3>
-                        <p>{basePoint.anonymizationRadius || 0} miles</p>
-                      </IonLabel>
-                    </IonItem>
-                  </>
-                ) : (
-                  <IonText color="warning">
-                    <p>No privacy base point configured. Using fallback protection.</p>
-                  </IonText>
-                )}
-              </IonCardContent>
-            </IonCard>
+          <IonContent style={{ '--background': '#f8f9fa' }}>
+            <div style={{ padding: '20px', maxWidth: '800px', margin: '0 auto' }}>
 
-            {/* Zipcode Management */}
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>
-                  <IonIcon icon={locationOutline} style={{marginRight: '8px'}} />
+              {/* Account Information */}
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                marginBottom: '20px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                border: '1px solid #e9ecef'
+              }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                  <IonIcon icon={informationCircle} style={{ marginRight: '8px' }} />
+                  Account Information
+                </h3>
+                
+                <div style={{ display: 'grid', gap: '12px' }}>
+                  <div>
+                    <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Name</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>{user?.name || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Email</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>{user?.email || 'Not set'}</div>
+                  </div>
+                  <div>
+                    <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Role</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>Driver</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Location Settings */}
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                marginBottom: '20px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                border: '1px solid #e9ecef'
+              }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                  <IonIcon icon={locationOutline} style={{ marginRight: '8px' }} />
                   Location Settings
-                </IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
+                </h3>
+                
                 {!editingZipcode ? (
-                  <>
-                    <IonItem>
-                      <IonLabel>
-                        <h3>Current Zipcode</h3>
-                        <p>{user.zipcode || 'Not set'}</p>
-                      </IonLabel>
-                      <IonButton fill="outline" onClick={startEditingZipcode}>
-                        Edit
-                      </IonButton>
-                    </IonItem>
-                    
-                    {basePoint && (
-                      <IonItem>
-                        <IonLabel>
-                          <h3>Privacy Center</h3>
-                          <p>{basePoint.city}, {basePoint.state}</p>
-                          <p style={{fontSize: '0.8em', color: 'var(--ion-color-medium)'}}>
+                  <div>
+                    <div style={{ display: 'grid', gap: '12px', marginBottom: '16px' }}>
+                      <div>
+                        <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Current Zipcode</div>
+                        <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>{user.zipcode || 'Not set'}</div>
+                      </div>
+                      {basePoint && (
+                        <div>
+                          <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Privacy Center</div>
+                          <div style={{ fontSize: '1.1rem', fontWeight: '600', color: '#2c3e50' }}>
+                            {basePoint.city}, {basePoint.state}
+                          </div>
+                          <div style={{ color: '#6c757d', fontSize: '0.8rem' }}>
                             Source: {basePoint.source}
-                          </p>
-                        </IonLabel>
-                      </IonItem>
-                    )}
-                  </>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <IonButton
+                      fill="outline"
+                      onClick={startEditingZipcode}
+                      style={{ '--border-color': '#007bff', '--color': '#007bff' }}
+                    >
+                      Edit Location
+                    </IonButton>
+                  </div>
                 ) : (
-                  <>
-                    <IonItem>
-                      <IonIcon icon={locationOutline} slot="start" />
+                  <div>
+                    <div style={{ marginBottom: '16px' }}>
                       <IonInput
                         placeholder="Enter new zipcode (e.g., 94583)"
                         value={newZipcode}
                         onIonInput={e => setNewZipcode(e.detail.value!)}
                         disabled={updatingPrivacy || geocodingNewZipcode}
                         clearInput
+                        style={{
+                          '--border-radius': '8px',
+                          '--border-color': '#dee2e6',
+                          '--padding-start': '12px',
+                          '--padding-end': '12px',
+                          '--background': 'white'
+                        }}
                       />
                       {newZipcodeValid === true && (
-                        <IonIcon icon={shieldCheckmarkOutline} color="success" slot="end" />
+                        <div style={{ color: '#28a745', fontSize: '0.8rem', marginTop: '4px' }}>
+                          <IonIcon icon={checkmarkCircle} style={{ marginRight: '4px' }} />
+                          Valid zipcode
+                        </div>
                       )}
                       {newZipcodeValid === false && (
-                        <IonIcon icon={alertCircleOutline} color="danger" slot="end" />
+                        <div style={{ color: '#dc3545', fontSize: '0.8rem', marginTop: '4px' }}>
+                          <IonIcon icon={alertCircleOutline} style={{ marginRight: '4px' }} />
+                          Invalid zipcode format
+                        </div>
                       )}
-                    </IonItem>
+                    </div>
 
                     {geocodingNewZipcode && (
-                      <div style={{ marginTop: '10px' }}>
-                        <IonLabel>Verifying new location...</IonLabel>
-                        <IonProgressBar type="indeterminate" color="primary" />
+                      <div style={{ marginBottom: '16px' }}>
+                        <div style={{ color: '#6c757d', fontSize: '0.9rem', marginBottom: '8px' }}>
+                          Verifying new location...
+                        </div>
+                        <IonProgressBar type="indeterminate" />
                       </div>
                     )}
 
                     {newBasePoint && (
-                      <div style={{ marginTop: '15px' }}>
-                        <IonChip color="success">
-                          <IonIcon icon={shieldCheckmarkOutline} />
-                          <IonLabel>
-                            New location: {newBasePoint.city}, {newBasePoint.state}
-                          </IonLabel>
-                        </IonChip>
+                      <div style={{
+                        marginBottom: '16px',
+                        padding: '12px',
+                        backgroundColor: '#d4edda',
+                        borderRadius: '6px',
+                        color: '#155724'
+                      }}>
+                        <IonIcon icon={checkmarkCircle} style={{ marginRight: '6px' }} />
+                        New location: {newBasePoint.city}, {newBasePoint.state}
                       </div>
                     )}
 
-                    <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
-                      <IonButton 
-                        fill="outline" 
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <IonButton
+                        fill="outline"
                         onClick={cancelEditingZipcode}
                         disabled={updatingPrivacy}
+                        style={{ '--border-color': '#6c757d', '--color': '#6c757d' }}
                       >
                         Cancel
                       </IonButton>
-                      <IonButton 
+                      <IonButton
                         onClick={updateZipcodeAndPrivacy}
                         disabled={!newBasePoint || updatingPrivacy}
+                        style={{ '--background': '#007bff' }}
                       >
                         {updatingPrivacy ? 'Updating...' : 'Save Location'}
                       </IonButton>
                     </div>
-                  </>
+                  </div>
                 )}
-              </IonCardContent>
-            </IonCard>
+              </div>
 
-            {/* Privacy Settings */}
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>
-                  <IonIcon icon={lockClosedOutline} style={{marginRight: '8px'}} />
+              {/* Privacy Settings */}
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                marginBottom: '20px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                border: '1px solid #e9ecef'
+              }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                  <IonIcon icon={lockClosedOutline} style={{ marginRight: '8px' }} />
                   Privacy Settings
-                </IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <IonItem>
-                  <IonLabel>
-                    <h3>Anonymization Radius</h3>
-                    <p>{privacySettings.anonymizationRadius} mile{privacySettings.anonymizationRadius !== 1 ? 's' : ''}</p>
-                  </IonLabel>
-                  <IonRange
-                    min={1}
-                    max={50}
-                    value={privacySettings.anonymizationRadius}
-                    onIonChange={e => setPrivacySettings(prev => ({ 
-                      ...prev, 
-                      anonymizationRadius: e.detail.value as number 
-                    }))}
-                    pin={true}
-                    snaps={true}
-                    ticks={false}
-                    disabled={updatingPrivacy}
-                  />
-                </IonItem>
+                </h3>
+                
+                <div style={{ marginBottom: '20px' }}>
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '8px' }}>
+                      Anonymization Radius: {privacySettings.anonymizationRadius} mile{privacySettings.anonymizationRadius !== 1 ? 's' : ''}
+                    </div>
+                    <IonRange
+                      min={1}
+                      max={50}
+                      value={privacySettings.anonymizationRadius}
+                      onIonChange={e => setPrivacySettings(prev => ({ 
+                        ...prev, 
+                        anonymizationRadius: e.detail.value as number 
+                      }))}
+                      pin={true}
+                      snaps={true}
+                      disabled={updatingPrivacy}
+                    />
+                  </div>
 
-                <IonItem>
-                  <IonLabel>
-                    <h3>Data Retention Period</h3>
-                    <p>{privacySettings.dataRetentionPeriod} month{privacySettings.dataRetentionPeriod !== 1 ? 's' : ''}</p>
-                  </IonLabel>
-                  <IonSelect
-                    value={privacySettings.dataRetentionPeriod}
-                    onIonChange={e => setPrivacySettings(prev => ({ 
-                      ...prev, 
-                      dataRetentionPeriod: e.detail.value 
-                    }))}
-                    disabled={updatingPrivacy}
-                  >
-                    <IonSelectOption value={1}>1 Month</IonSelectOption>
-                    <IonSelectOption value={3}>3 Months</IonSelectOption>
-                    <IonSelectOption value={6}>6 Months</IonSelectOption>
-                    <IonSelectOption value={12}>1 Year</IonSelectOption>
-                    <IonSelectOption value={24}>2 Years</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '8px' }}>Data Retention Period</div>
+                    <IonSelect
+                      value={privacySettings.dataRetentionPeriod}
+                      onIonChange={e => setPrivacySettings(prev => ({ 
+                        ...prev, 
+                        dataRetentionPeriod: e.detail.value 
+                      }))}
+                      disabled={updatingPrivacy}
+                      style={{
+                        '--border-radius': '8px',
+                        '--border-color': '#dee2e6',
+                        '--padding-start': '12px',
+                        '--background': 'white'
+                      }}
+                    >
+                      <IonSelectOption value={1}>1 Month</IonSelectOption>
+                      <IonSelectOption value={3}>3 Months</IonSelectOption>
+                      <IonSelectOption value={6}>6 Months</IonSelectOption>
+                      <IonSelectOption value={12}>1 Year</IonSelectOption>
+                      <IonSelectOption value={24}>2 Years</IonSelectOption>
+                    </IonSelect>
+                  </div>
 
-                <IonItem>
-                  <IonLabel>
-                    <h3>Consent Level</h3>
-                    <p>Current: {privacySettings.consentLevel}</p>
-                  </IonLabel>
-                  <IonSelect
-                    value={privacySettings.consentLevel}
-                    onIonChange={e => setPrivacySettings(prev => ({ 
-                      ...prev, 
-                      consentLevel: e.detail.value 
-                    }))}
-                    disabled={updatingPrivacy}
-                  >
-                    <IonSelectOption value="full">Full Analytics</IonSelectOption>
-                    <IonSelectOption value="basic">Basic Analytics</IonSelectOption>
-                    <IonSelectOption value="minimal">Minimal Data</IonSelectOption>
-                  </IonSelect>
-                </IonItem>
-
-                <div style={{ marginTop: '20px' }}>
-                  <IonButton
-                    expand="block"
-                    onClick={updatePrivacySettings}
-                    disabled={updatingPrivacy}
-                  >
-                    <IonIcon icon={saveOutline} slot="start" />
-                    {updatingPrivacy ? 'Saving...' : 'Save Privacy Settings'}
-                  </IonButton>
+                  <div style={{ marginBottom: '12px' }}>
+                    <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '8px' }}>Consent Level</div>
+                    <IonSelect
+                      value={privacySettings.consentLevel}
+                      onIonChange={e => setPrivacySettings(prev => ({ 
+                        ...prev, 
+                        consentLevel: e.detail.value 
+                      }))}
+                      disabled={updatingPrivacy}
+                      style={{
+                        '--border-radius': '8px',
+                        '--border-color': '#dee2e6',
+                        '--padding-start': '12px',
+                        '--background': 'white'
+                      }}
+                    >
+                      <IonSelectOption value="full">Full Analytics</IonSelectOption>
+                      <IonSelectOption value="basic">Basic Analytics</IonSelectOption>
+                      <IonSelectOption value="minimal">Minimal Data</IonSelectOption>
+                    </IonSelect>
+                  </div>
                 </div>
-              </IonCardContent>
-            </IonCard>
 
-            {/* Privacy Impact Summary */}
-            <IonCard>
-              <IonCardHeader>
-                <IonCardTitle>Privacy Impact Summary</IonCardTitle>
-              </IonCardHeader>
-              <IonCardContent>
-                <IonText>
-                  <p><strong>Current Protection:</strong></p>
-                  <ul>
+                <IonButton
+                  expand="block"
+                  onClick={updatePrivacySettings}
+                  disabled={updatingPrivacy}
+                  style={{ '--background': '#007bff', '--border-radius': '8px' }}
+                >
+                  <IonIcon icon={saveOutline} slot="start" />
+                  {updatingPrivacy ? 'Saving...' : 'Save Privacy Settings'}
+                </IonButton>
+              </div>
+
+              {/* Account Management - DELETE ACCOUNT */}
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                border: '1px solid #e9ecef'
+              }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                  <IonIcon icon={keyOutline} style={{ marginRight: '8px' }} />
+                  Account Management
+                </h3>
+                
+                <div style={{
+                  padding: '16px',
+                  backgroundColor: '#fff5f5',
+                  borderRadius: '8px',
+                  border: '1px solid #feb2b2',
+                  marginBottom: '16px'
+                }}>
+                  <h4 style={{ margin: '0 0 8px 0', color: '#c53030', fontSize: '1rem', fontWeight: '600' }}>
+                    ⚠️ Delete Account
+                  </h4>
+                  <p style={{ margin: '0 0 12px 0', fontSize: '0.85rem', color: '#721c24' }}>
+                    Permanently delete your account and all associated driving data. This action cannot be undone.
+                  </p>
+                  <ul style={{ margin: '0 0 12px 0', paddingLeft: '20px', fontSize: '0.8rem', color: '#721c24' }}>
+                    <li>All trip data will be permanently removed</li>
+                    <li>Privacy settings and location data will be deleted</li>
+                    <li>You will need to create a new account to use the service again</li>
+                  </ul>
+                </div>
+
+                <IonButton
+                  expand="block"
+                  fill="outline"
+                  onClick={handleDeleteAccountRequest}
+                  disabled={deletingAccount}
+                  style={{
+                    '--border-color': '#dc3545',
+                    '--color': '#dc3545',
+                    '--border-radius': '8px'
+                  }}
+                >
+                  <IonIcon icon={trashOutline} slot="start" />
+                  Delete My Account
+                </IonButton>
+              </div>
+
+              {/* Privacy Impact Summary */}
+              <div style={{
+                backgroundColor: 'white',
+                borderRadius: '12px',
+                padding: '24px',
+                boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                border: '1px solid #e9ecef'
+              }}>
+                <h3 style={{ margin: '0 0 16px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                  Privacy Impact Summary
+                </h3>
+                
+                <div style={{ fontSize: '0.9rem', color: '#495057' }}>
+                  <p style={{ margin: '0 0 12px 0' }}><strong>Current Protection:</strong></p>
+                  <ul style={{ margin: '0 0 16px 0', paddingLeft: '20px' }}>
                     <li>Your exact location is never stored</li>
                     <li>Data is anonymized within {privacySettings.anonymizationRadius} miles of {basePoint?.city || 'your area'}</li>
                     <li>Data retention: {privacySettings.dataRetentionPeriod} months</li>
                     <li>Analytics level: {privacySettings.consentLevel}</li>
                   </ul>
                   
-                  <p style={{fontSize: '0.9em', color: 'var(--ion-color-medium)', marginTop: '15px'}}>
+                  <p style={{ fontSize: '0.85rem', color: '#6c757d', margin: '0' }}>
                     <strong>How it works:</strong> Your phone calculates movement differences, then shifts them 
                     to a random point near {basePoint?.city || 'your city'}. Service providers see driving patterns 
                     but never your actual routes or destinations.
                   </p>
-                </IonText>
-              </IonCardContent>
-            </IonCard>
+                </div>
+              </div>
 
-            {/* Geocoding Cache Stats */}
-            {geocodeStats.entries > 0 && (
-              <IonCard>
-                <IonCardHeader>
-                  <IonCardTitle>Cache Statistics</IonCardTitle>
-                </IonCardHeader>
-                <IonCardContent>
-                  <IonText>
-                    <p><strong>Cached Locations:</strong> {geocodeStats.entries}</p>
-                    <p><strong>Cache Size:</strong> {geocodeStats.size}</p>
+              {/* Geocoding Cache Stats */}
+              {geocodeStats.entries > 0 && (
+                <div style={{
+                  backgroundColor: 'white',
+                  borderRadius: '12px',
+                  padding: '24px',
+                  boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                  border: '1px solid #e9ecef'
+                }}>
+                  <h3 style={{ margin: '0 0 16px 0', color: '#2c3e50', fontSize: '1.2rem', fontWeight: '600' }}>
+                    Cache Statistics
+                  </h3>
+                  
+                  <div style={{ fontSize: '0.9rem', color: '#495057' }}>
+                    <p style={{ margin: '0 0 8px 0' }}><strong>Cached Locations:</strong> {geocodeStats.entries}</p>
+                    <p style={{ margin: '0 0 8px 0' }}><strong>Cache Size:</strong> {geocodeStats.size}</p>
                     {geocodeStats.oldestEntry && (
-                      <p><strong>Oldest Entry:</strong> {geocodeStats.oldestEntry}</p>
+                      <p style={{ margin: '0' }}><strong>Oldest Entry:</strong> {geocodeStats.oldestEntry}</p>
                     )}
-                  </IonText>
-                </IonCardContent>
-              </IonCard>
-            )}
+                  </div>
+                </div>
+              )}
+
+            </div>
           </IonContent>
         </IonModal>
 
+        {/* FIXED Delete Account Modal - No More IonAlert Issues */}
+        <IonModal isOpen={showDeleteModal} onDidDismiss={cancelDeleteAccount}>
+          <IonHeader>
+            <IonToolbar color="danger">
+              <IonTitle style={{ color: 'white', fontWeight: '600' }}>
+                {deleteStep === 'password' ? 'Delete Account' : 'Final Confirmation'}
+              </IonTitle>
+              <IonButtons slot="end">
+                <IonButton fill="clear" onClick={cancelDeleteAccount} style={{ color: 'white' }}>
+                  <IonIcon icon={closeOutline} />
+                </IonButton>
+              </IonButtons>
+            </IonToolbar>
+          </IonHeader>
+          
+          <IonContent style={{ '--background': '#f8f9fa' }}>
+            <div style={{ padding: '20px', maxWidth: '500px', margin: '0 auto' }}>
+
+              {deleteStep === 'password' && (
+                <div>
+                  <div style={{
+                    backgroundColor: '#fff5f5',
+                    border: '1px solid #feb2b2',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    marginBottom: '20px'
+                  }}>
+                    <h3 style={{ margin: '0 0 12px 0', color: '#c53030', fontSize: '1.2rem', fontWeight: '600' }}>
+                      ⚠️ Account Deletion
+                    </h3>
+                    <p style={{ margin: '0 0 12px 0', color: '#721c24', fontSize: '0.95rem' }}>
+                      This action is <strong>permanent and cannot be undone</strong>. All your driving data will be permanently deleted.
+                    </p>
+                    <ul style={{ margin: '0', paddingLeft: '20px', color: '#721c24', fontSize: '0.9rem' }}>
+                      <li>All trip data will be permanently removed</li>
+                      <li>Privacy settings and location data will be deleted</li>
+                      <li>You will need to create a new account to use the service again</li>
+                    </ul>
+                  </div>
+
+                  <div style={{
+                    backgroundColor: 'white',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    border: '1px solid #e9ecef'
+                  }}>
+                    <h4 style={{ margin: '0 0 16px 0', color: '#2c3e50' }}>
+                      Enter your password to continue:
+                    </h4>
+                    
+                    <IonInput
+                      type="password"
+                      placeholder="Enter your password"
+                      value={deletePassword}
+                      onIonInput={e => setDeletePassword(e.detail.value!)}
+                      style={{
+                        '--border-radius': '8px',
+                        '--border-color': '#dee2e6',
+                        '--padding-start': '12px',
+                        '--padding-end': '12px',
+                        '--background': 'white',
+                        marginBottom: '20px'
+                      }}
+                    />
+
+                    <div style={{ display: 'flex', gap: '10px' }}>
+                      <IonButton
+                        expand="block"
+                        fill="outline"
+                        onClick={cancelDeleteAccount}
+                        style={{ '--border-color': '#6c757d', '--color': '#6c757d' }}
+                      >
+                        Cancel
+                      </IonButton>
+                      <IonButton
+                        expand="block"
+                        onClick={handlePasswordSubmit}
+                        disabled={!deletePassword.trim()}
+                        style={{ '--background': '#dc3545' }}
+                      >
+                        Continue
+                      </IonButton>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {deleteStep === 'confirm' && (
+                <div>
+                  <div style={{
+                    backgroundColor: '#fff5f5',
+                    border: '2px solid #dc3545',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    marginBottom: '20px',
+                    textAlign: 'center'
+                  }}>
+                    <h3 style={{ margin: '0 0 16px 0', color: '#c53030', fontSize: '1.3rem', fontWeight: '700' }}>
+                      ⚠️ FINAL CONFIRMATION
+                    </h3>
+                    <p style={{ margin: '0 0 16px 0', color: '#721c24', fontSize: '1rem', fontWeight: '600' }}>
+                      Are you absolutely sure you want to delete your account for:
+                    </p>
+                    <div style={{
+                      backgroundColor: 'white',
+                      padding: '12px',
+                      borderRadius: '6px',
+                      border: '1px solid #dc3545',
+                      margin: '0 0 16px 0'
+                    }}>
+                      <strong style={{ color: '#dc3545', fontSize: '1.1rem' }}>
+                        {user?.email || user?.name || 'this user'}
+                      </strong>
+                    </div>
+                    <p style={{ margin: '0', color: '#721c24', fontSize: '0.9rem' }}>
+                      This action is <strong>permanent and cannot be undone</strong>.
+                    </p>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '10px' }}>
+                    <IonButton
+                      expand="block"
+                      fill="outline"
+                      onClick={() => setDeleteStep('password')}
+                      disabled={deletingAccount}
+                      style={{ '--border-color': '#6c757d', '--color': '#6c757d' }}
+                    >
+                      Back
+                    </IonButton>
+                    <IonButton
+                      expand="block"
+                      onClick={handleDeleteAccountConfirm}
+                      disabled={deletingAccount}
+                      style={{ '--background': '#dc3545' }}
+                    >
+                      {deletingAccount ? (
+                        <>
+                          <IonIcon icon={timeOutline} slot="start" />
+                          Deleting...
+                        </>
+                      ) : (
+                        <>
+                          <IonIcon icon={trashOutline} slot="start" />
+                          Yes, Delete Forever
+                        </>
+                      )}
+                    </IonButton>
+                  </div>
+                </div>
+              )}
+
+            </div>
+          </IonContent>
+        </IonModal>
+
+        {/* GPS Error Alert */}
         <IonAlert
           isOpen={showAlert}
           onDidDismiss={() => setShowAlert(false)}
@@ -1809,6 +1506,15 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
           message={error}
           buttons={['OK']}
         />
+
+        {/* CSS for pulse animation */}
+        <style>{`
+          @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+          }
+        `}</style>
       </IonContent>
     </IonPage>
   );
