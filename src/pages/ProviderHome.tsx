@@ -515,39 +515,43 @@ const ProviderHome: React.FC<ProviderHomeProps> = ({ user, onSignOut }) => {
                       </div>
 
                       {selectedTrip?.trip_id === trip.trip_id && (
-                        <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e9ecef' }}>
-                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', fontSize: '0.85rem' }}>
-                            <div>
-                              <div style={{ color: '#6c757d' }}>Sudden Accelerations</div>
-                              <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.sudden_accelerations}</div>
-                            </div>
-                            <div>
-                              <div style={{ color: '#6c757d' }}>Hard Stops</div>
-                              <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.hard_stops}</div>
-                            </div>
-                            <div>
-                              <div style={{ color: '#6c757d' }}>Dangerous Turns</div>
-                              <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.dangerous_turns}</div>
-                            </div>
-                            <div>
-                              <div style={{ color: '#6c757d' }}>Safe Turns</div>
-                              <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.safe_turns}</div>
-                            </div>
-                            <div>
-                              <div style={{ color: '#6c757d' }}>Events/100mi</div>
-                              <div style={{ fontWeight: '600', color: '#2c3e50' }}>{safeToFixed(trip.events_per_100_miles || 0, 2)}</div>
-                            </div>
-                            <div>
-                              <div style={{ color: '#6c757d' }}>Industry Rating</div>
-                              <div style={{ fontWeight: '600', color: getIndustryRating(trip.industry_rating || '').color }}>
-                                {trip.industry_rating || 'N/A'}
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  ))}
+  <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #e9ecef' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '12px', fontSize: '0.85rem' }}>
+      <div>
+        <div style={{ color: '#6c757d' }}>Sudden Accelerations</div>
+        <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.sudden_accelerations}</div>
+      </div>
+      <div>
+        <div style={{ color: '#6c757d' }}>Sudden Decelerations</div>
+        <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.sudden_decelerations}</div>
+      </div>
+      <div>
+        <div style={{ color: '#6c757d' }}>Hard Stops</div>
+        <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.hard_stops}</div>
+      </div>
+      <div>
+        <div style={{ color: '#6c757d' }}>Dangerous Turns</div>
+        <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.dangerous_turns}</div>
+      </div>
+      <div>
+        <div style={{ color: '#6c757d' }}>Safe Turns</div>
+        <div style={{ fontWeight: '600', color: '#2c3e50' }}>{trip.safe_turns}</div>
+      </div>
+      <div>
+        <div style={{ color: '#6c757d' }}>Events/100mi</div>
+        <div style={{ fontWeight: '600', color: '#2c3e50' }}>{safeToFixed(trip.events_per_100_miles || 0, 2)}</div>
+      </div>
+      <div>
+        <div style={{ color: '#6c757d' }}>Industry Rating</div>
+        <div style={{ fontWeight: '600', color: getIndustryRating(trip.industry_rating || '').color }}>
+          {trip.industry_rating || 'N/A'}
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+</div>
+))}
                   
                   {!showDetailedView && analytics.trips.length > 5 && (
                     <div style={{ textAlign: 'center', marginTop: '16px' }}>

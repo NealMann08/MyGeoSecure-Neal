@@ -1,4 +1,4 @@
-// MODERN Professional Driver Dashboard - Complete Implementation
+// MODERN Professional Driver Dashboard - Complete Implementation WITH DISTANCE TRACKING FIX
 import React, { useState, useRef, useEffect } from 'react';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
@@ -74,6 +74,10 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     maxSpeed: 0,
     avgSpeed: 0
   });
+
+  // ✅ NEW: Distance tracking state variables
+  const [totalTripDistance, setTotalTripDistance] = useState(0); // Track cumulative distance in miles
+  const [lastDistancePoint, setLastDistancePoint] = useState<EnhancedLocationPoint | null>(null); // Last point for distance calc
 
   // Settings Modal and Privacy Controls
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -493,9 +497,69 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     }
   };
 
+  // Helper function for accurate distance calculation
+  const calculateHaversineDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+    const R = 3959; // Earth's radius in miles
+    const dLat = toRadians(lat2 - lat1);
+    const dLon = toRadians(lon2 - lon1);
+    
+    const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+              Math.cos(toRadians(lat1)) * Math.cos(toRadians(lat2)) *
+              Math.sin(dLon / 2) * Math.sin(dLon / 2);
+    
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
+  };
+
+  const toRadians = (degrees: number): number => {
+    return degrees * (Math.PI / 180);
+  };
+
+  // ✅ UPDATED finalizeTripOnServer function - REPLACE your existing one completely:
   const finalizeTripOnServer = async (tripId: string) => {
     try {
       console.log(`🏁 Finalizing real trip: ${tripId}`);
+      console.log(`📏 Total accumulated distance: ${totalTripDistance.toFixed(3)} miles`);
+      
+      // ✅ CRITICAL FIX: Use accumulated distance instead of calculating from remaining queue points
+      const totalDistanceMiles = totalTripDistance; // This now contains the FULL trip distance
+      
+      // Calculate actual trip duration from timestamps
+      const tripEndTime = new Date().toISOString();
+      const tripStartTime = tripQuality.tripStartTime;
+      const actualDurationMs = new Date(tripEndTime).getTime() - new Date(tripStartTime).getTime();
+      const actualDurationMinutes = Math.max(1, actualDurationMs / (1000 * 60)); // Minimum 1 minute
+      
+      // Enhanced trip quality with accurate distance
+      const enhancedTripQuality = {
+        ...tripQuality,
+        // ✅ Use the accumulated distance (FULL TRIP)
+        actual_distance_miles: totalDistanceMiles,
+        actual_duration_minutes: actualDurationMinutes,
+        actual_start_timestamp: tripStartTime,
+        actual_end_timestamp: tripEndTime,
+        
+        // iPhone GPS accuracy metrics
+        gps_max_speed_mph: tripQuality.maxSpeed,
+        gps_avg_speed_mph: tripQuality.avgSpeed,
+        gps_current_speed_mph: tripQuality.currentSpeed,
+        
+        // Quality indicators
+        total_gps_points: tripQuality.totalPoints,
+        valid_gps_points: tripQuality.validPoints,
+        gps_accuracy_avg: tripQuality.averageAccuracy,
+        
+        // Privacy protection status
+        privacy_protected: basePoint?.source !== 'fallback',
+        base_point_city: basePoint?.city,
+        anonymization_radius: basePoint?.anonymizationRadius,
+        
+        // Metadata for analysis
+        use_gps_metrics: true, // Flag to use iPhone GPS data over reconstructed
+        data_source: 'iphone_gps_realtime_accumulation', // Updated to reflect new method
+        distance_calculation_method: 'realtime_accumulation', // New field
+        remaining_queue_points: locationQueue.length // For debugging
+      };
       
       const response = await fetch('https://m9yn8bsm3k.execute-api.us-west-1.amazonaws.com/finalize-trip', {
         method: 'POST',
@@ -503,13 +567,9 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
         body: JSON.stringify({
           user_id: user.userId,
           trip_id: tripId,
-          end_timestamp: new Date().toISOString(),
-          trip_quality: {
-            ...tripQuality,
-            privacy_protected: basePoint?.source !== 'fallback',
-            base_point_city: basePoint?.city,
-            anonymization_radius: basePoint?.anonymizationRadius
-          }
+          start_timestamp: tripStartTime,
+          end_timestamp: tripEndTime,
+          trip_quality: enhancedTripQuality
         })
       });
 
@@ -517,12 +577,15 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
         throw new Error(`Failed to finalize trip: ${response.status}`);
       }
 
-      console.log('✅ Real trip finalized successfully with privacy metadata');
+      console.log('✅ Trip finalized successfully with ACCURATE distance tracking');
+      console.log(`📊 Final Stats - Distance: ${totalDistanceMiles.toFixed(3)} miles, Duration: ${actualDurationMinutes.toFixed(1)} minutes`);
+      console.log(`📈 Average Speed: ${totalDistanceMiles > 0 ? ((totalDistanceMiles / actualDurationMinutes) * 60).toFixed(1) : 0} mph`);
     } catch (err) {
       console.error('❌ Failed to finalize trip:', err);
     }
   };
 
+  // ✅ UPDATED processLocationUpdate function - REPLACE your existing one completely:
   const processLocationUpdate = async (position: GeolocationPosition) => {
     const latitude = position.coords.latitude;
     const longitude = position.coords.longitude;
@@ -542,6 +605,31 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     const isValid = validateGPSPoint(newPoint, lastValidPoint);
     newPoint.isValid = isValid;
 
+    // ✅ CRITICAL FIX: Accumulate distance throughout entire trip
+    if (isValid && lastDistancePoint) {
+      const segmentDistance = calculateHaversineDistance(
+        lastDistancePoint.latitude, lastDistancePoint.longitude,
+        newPoint.latitude, newPoint.longitude
+      );
+      
+      // Filter out GPS noise - only add reasonable distances
+      if (segmentDistance >= 0.001 && segmentDistance <= 0.5) { // 0.001 to 0.5 miles per GPS update
+        setTotalTripDistance(prev => {
+          const newTotal = prev + segmentDistance;
+          console.log(`📏 Distance segment: ${(segmentDistance * 5280).toFixed(1)}ft, Total: ${newTotal.toFixed(3)} miles`);
+          return newTotal;
+        });
+      } else if (segmentDistance > 0.5) {
+        console.log(`⚠️ Large GPS jump rejected: ${segmentDistance.toFixed(3)} miles (likely GPS error)`);
+      }
+    }
+
+    // Update last distance point for next calculation (only if valid)
+    if (isValid) {
+      setLastDistancePoint(newPoint);
+    }
+
+    // Update trip quality metrics (existing code)
     setTripQuality(prev => {
       const currentSpeedMph = speed ? speed * 2.237 : 0;
       const newMetrics = {
@@ -561,6 +649,7 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
 
     if (!isValid) return;
 
+    // Existing queue management (unchanged)
     setLocationQueue(prevQueue => {
       const updatedQueue = [...prevQueue, newPoint];
 
@@ -582,6 +671,7 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
     setError('');
   };
 
+  // ✅ UPDATED toggleTracking function - REPLACE your existing one completely:
   const toggleTracking = async () => {
     if (!tracking) {
       if (!navigator.geolocation) {
@@ -593,6 +683,11 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       setCurrentTrip(tripId);
       setLocationQueue([]);
       setBatchCount(0);
+      
+      // ✅ CRITICAL FIX: Reset distance tracking for new trip
+      setTotalTripDistance(0);
+      setLastDistancePoint(null);
+      
       setTripQuality({
         totalPoints: 0,
         validPoints: 0,
@@ -622,6 +717,7 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
         options
       );
 
+      console.log(`🚗 Started tracking trip ${tripId} with distance monitoring`);
       present({
         message: 'GPS tracking started! Drive safely.',
         duration: 2000,
@@ -634,15 +730,22 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
       }
 
       if (locationQueue.length > 1 && currentTrip) {
+        console.log('🏁 Uploading final batch and finalizing trip...');
         await uploadBatch(locationQueue, currentTrip, batchCount + 1);
         await finalizeTripOnServer(currentTrip);
       }
 
+      // Reset all state
       setLocationQueue([]);
       setCurrentTrip(null);
       setBatchCount(0);
       setError('');
       
+      // Reset distance tracking
+      setTotalTripDistance(0);
+      setLastDistancePoint(null);
+      
+      console.log('🛑 Stopped tracking');
       present({
         message: 'Trip completed! Check your driving analysis.',
         duration: 3000,
@@ -872,6 +975,17 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
                 <h3 style={{ margin: '0', color: '#28a745', fontSize: '1.2rem', fontWeight: '600' }}>
                   🚗 Trip Active - {currentTrip?.slice(-8)}
                 </h3>
+              </div>
+
+              {/* ✅ NEW: Real-time distance display */}
+              <div style={{ textAlign: 'center', marginBottom: '16px' }}>
+                <div style={{ color: '#6c757d', fontSize: '0.85rem', marginBottom: '4px' }}>Trip Distance</div>
+                <div style={{ fontSize: '1.6rem', fontWeight: '700', color: '#007bff' }}>
+                  {totalTripDistance.toFixed(2)} miles
+                </div>
+                <div style={{ color: '#6c757d', fontSize: '0.8rem' }}>
+                  ({(totalTripDistance * 1.60934).toFixed(2)} km)
+                </div>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '16px', marginBottom: '20px' }}>

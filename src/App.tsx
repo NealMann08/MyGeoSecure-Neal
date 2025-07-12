@@ -107,12 +107,15 @@ const App: React.FC = () => {
   };
 
   const handleSignOut = () => {
-    console.log('App: Signing out user');
-    setUser(null);
-    localStorage.removeItem('privacyDriveUser');
-    setToastMessage('Signed out successfully');
-    setShowToast(true);
-  };
+  console.log('App: Signing out user');
+  setUser(null);
+  localStorage.removeItem('privacyDriveUser');
+  setToastMessage('Signed out successfully');
+  setShowToast(true);
+  
+  // Force redirect to signin page after signout
+  window.location.href = '/signin';
+};
 
   // Show loading while checking for saved user
   if (isLoading) {
