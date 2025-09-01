@@ -1,4 +1,5 @@
 // // COMPLETE FIXED Professional Driver Dashboard - GPS AND DELTA TRACKING IMPLEMENTATION
+
 // import React, { useState, useRef, useEffect } from 'react';
 // import {
 //   IonPage, IonHeader, IonToolbar, IonTitle, IonContent,
@@ -29,6 +30,19 @@
 //   getGeocodeStats,
 //   type CityCoordinates
 // } from '../utils/geocoding';
+// import { registerPlugin } from '@capacitor/core';
+
+// // Define the plugin interface for Capacitor v7
+// interface BackgroundGeolocationPlugin {
+//   requestPermissions(options: { permissions: string[] }): Promise<any>;
+//   addWatcher(options: any, callback: (location: any, error: any) => void): Promise<string>;
+//   removeWatcher(options: { id: string }): Promise<void>;
+// }
+
+// // Register the plugin with Capacitor v7
+// const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
+
+
 
 // // ============ TEST MODE CODE - REMOVE FOR PRODUCTION ============
 // interface TestGPSPoint {
@@ -426,9 +440,27 @@
 //   consentLevel: 'full' | 'basic' | 'minimal';
 // }
 
+// interface BackgroundLocation {
+//   latitude: number;
+//   longitude: number;
+//   accuracy: number;
+//   altitude?: number;
+//   altitudeAccuracy?: number;
+//   bearing?: number;
+//   speed?: number;
+//   time: number;
+// }
+
+// interface BackgroundLocationError {
+//   message: string;
+//   code?: number;
+// }
+
+
 // const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
 //   const [tracking, setTracking] = useState(false);
 //   const [currentTrip, setCurrentTrip] = useState<string | null>(null);
+//   const [backgroundWatcherId, setBackgroundWatcherId] = useState<string | null>(null);
 //   const [locationQueue, setLocationQueue] = useState<EnhancedLocationPoint[]>([]);
 //   const [error, setError] = useState('');
 //   const [showAlert, setShowAlert] = useState(false);
@@ -489,15 +521,26 @@
 //   // Store ALL GPS points for trip analysis
 //   const [allTripPoints, setAllTripPoints] = useState<EnhancedLocationPoint[]>([]);
 
-//   useEffect(() => {
-//     loadUserPrivacySettings();
+// useEffect(() => {
+//   loadUserPrivacySettings();
+  
+//   return () => {
+//     // Cleanup old GPS watching
+//     if (watchIdRef.current !== null) {
+//       navigator.geolocation.clearWatch(watchIdRef.current);
+//     }
     
-//     return () => {
-//       if (watchIdRef.current !== null) {
-//         navigator.geolocation.clearWatch(watchIdRef.current);
-//       }
-//     };
-//   }, []);
+//     // Cleanup background tracking (FIXED FOR CAPACITOR v7)
+//     if (backgroundWatcherId) {
+//       BackgroundGeolocation.removeWatcher({
+//         id: backgroundWatcherId
+//       }).catch(console.error);
+//     }
+//   };
+// }, [backgroundWatcherId]);
+
+
+
 
 //   // Validate new zipcode in real-time
 //   useEffect(() => {
@@ -1231,7 +1274,20 @@
 //     // Set tracking to false immediately to prevent UI confusion
 //     setTracking(false);
     
-//     // Clear any GPS watching
+//     // STOP BACKGROUND GEOLOCATION (FIXED FOR CAPACITOR v7)
+//     if (backgroundWatcherId) {
+//       try {
+//         await BackgroundGeolocation.removeWatcher({
+//           id: backgroundWatcherId
+//         });
+//         setBackgroundWatcherId(null);
+//         console.log('✅ Background geolocation stopped');
+//       } catch (error) {
+//         console.error('❌ Error stopping background geolocation:', error);
+//       }
+//     }
+    
+//     // Clear any old GPS watching (fallback)
 //     if (watchIdRef.current !== null) {
 //       navigator.geolocation.clearWatch(watchIdRef.current);
 //       watchIdRef.current = null;
@@ -1245,7 +1301,7 @@
 //     try {
 //       // Upload final batch if there are remaining points
 //       if (locationQueue.length > 0 && finalTripId) {
-//         console.log(`🏁 Uploading final batch of ${locationQueue.length} points`);
+//         console.log(`📤 Uploading final batch of ${locationQueue.length} points`);
 //         const finalBatchNumber = batchCountRef.current + 1;
 //         batchCountRef.current = finalBatchNumber;
 //         await uploadBatch(locationQueue, finalTripId, finalBatchNumber);
@@ -1265,24 +1321,16 @@
 //       });
 //     }
 
-//     // ENHANCED DEBUG: Trip summary
-//     console.log(`📊 TRIP SUMMARY:`);
-//     console.log(`   Total batches uploaded: ${batchCountRef.current}`);
-//     console.log(`   State batch count: ${batchCount}`);
-//     console.log(`   Total GPS points: ${allTripPoints.length}`);
-//     console.log(`   Expected batches: ${Math.ceil(allTripPoints.length / TRAJECTORY_LENGTH)}`);
-
-//     // Reset all state AND ref
 //     // Reset all state AND refs
-// setLocationQueue([]);
-// setCurrentTrip(null);
-// currentTripRef.current = null;
-// setBatchCount(0);
-// batchCountRef.current = 0;
-// setTotalTripDistance(0);
-// setLastDistancePoint(null);
-// lastDistancePointRef.current = null; // ADD THIS LINE
-// setAllTripPoints([]);
+//     setLocationQueue([]);
+//     setCurrentTrip(null);
+//     currentTripRef.current = null;
+//     setBatchCount(0);
+//     batchCountRef.current = 0;
+//     setTotalTripDistance(0);
+//     setLastDistancePoint(null);
+//     lastDistancePointRef.current = null;
+//     setAllTripPoints([]);
     
 //     console.log(`🛑 TRIP STOPPED AND FINALIZED (${TEST_MODE ? 'TEST' : 'REAL'} mode)`);
     
@@ -1300,11 +1348,6 @@
 //   }
 
 //   // STARTING TRIP
-//   if (!navigator.geolocation && !TEST_MODE) {
-//     setError('Geolocation is not supported by this device');
-//     return;
-//   }
-
 //   const tripId = generateTripId();
   
 //   // CRITICAL FIX: Set trip ID in BOTH state and ref
@@ -1319,6 +1362,7 @@
   
 //   setTotalTripDistance(0);
 //   setLastDistancePoint(null);
+//   lastDistancePointRef.current = null;
 //   setAllTripPoints([]);
   
 //   setTripQuality({
@@ -1364,34 +1408,155 @@
 //     });
     
 //   } else {
-//     console.log('🌍 REAL MODE: Using actual GPS');
+//     // NEW REAL MODE: Use Background Geolocation (FIXED FOR CAPACITOR v7)
+//     console.log('🌍 REAL MODE: Starting BACKGROUND GPS tracking');
     
-//     const options = {
-//       enableHighAccuracy: true,
-//       timeout: 15000,
-//       maximumAge: 2000
-//     };
+//     try {
+//       // Request permissions first (CAPACITOR v7 COMPATIBLE)
+//       const permissionResult = await BackgroundGeolocation.requestPermissions({
+//         permissions: ['location', 'background-location']
+//       });
+      
+//       if (permissionResult.location !== 'granted') {
+//         throw new Error('Location permission denied');
+//       }
+      
+//       if (permissionResult['background-location'] !== 'granted') {
+//         console.warn('⚠️ Background location permission not granted - tracking may be limited');
+//         present({
+//           message: 'For best results, please enable "Always" location permission in Settings.',
+//           duration: 6000,
+//           color: 'warning'
+//         });
+//       } else {
+//         console.log('✅ Background location permission granted');
+//       }
 
-//     watchIdRef.current = navigator.geolocation.watchPosition(
-//       processLocationUpdate,
-//       (error) => {
-//         console.error('GPS error:', error);
-//         setError(`GPS error: ${error.message}`);
-//         setShowAlert(true);
-//       },
-//       options
-//     );
+//       // Start background geolocation tracking (CAPACITOR v7 COMPATIBLE)
+//       const watcherId = await BackgroundGeolocation.addWatcher(
+//         {
+//           id: `privacy-drive-${Date.now()}`, // Unique ID for this trip
+//           requestPermissions: true,
+//           stale: false,
+//           distanceFilter: 1, // Update every 1 meter of movement
+//           interval: 1000,    // Check every 1 second
+//           backgroundMessage: "Privacy Drive is analyzing your driving behavior while protecting your location privacy.",
+//           backgroundTitle: "Privacy Drive - Trip Active",
+//           // Critical settings for background operation
+//           enableBackground: true,
+//           // iOS specific settings
+//           pausesLocationUpdatesAutomatically: false,
+//           allowsBackgroundLocationUpdates: true,
+//           // Android specific settings  
+//           enableHighAccuracy: true,
+//           notificationTitle: "Privacy Drive Active",
+//           notificationText: "Tracking trip with privacy protection"
+//         },
+//         (location: BackgroundLocation | null, error: BackgroundLocationError | null) => {
+//           if (error) {
+//             console.error('❌ Background location error:', error);
+//             setError(`Background GPS error: ${error.message}`);
+//             return;
+//           }
 
-//     present({
-//       message: 'GPS tracking started! Drive safely. Click stop to end trip.',
-//       duration: 3000,
-//       color: 'success'
-//     });
+//           if (location) {
+//             console.log('📍 BACKGROUND LOCATION UPDATE:', {
+//               lat: location.latitude?.toFixed(6),
+//               lon: location.longitude?.toFixed(6),
+//               accuracy: location.accuracy?.toFixed(1),
+//               speed: location.speed ? (location.speed * 2.237).toFixed(1) : 'N/A',
+//               time: new Date(location.time || Date.now()).toLocaleTimeString()
+//             });
+
+//             // Convert Capacitor location to GeolocationPosition format
+//             const mockPosition: GeolocationPosition = {
+//               coords: {
+//                 latitude: location.latitude || 0,
+//                 longitude: location.longitude || 0,
+//                 altitude: location.altitude || null,
+//                 accuracy: location.accuracy || 0,
+//                 altitudeAccuracy: location.altitudeAccuracy || null,
+//                 heading: location.bearing || null,
+//                 speed: location.speed || null,
+//                 toJSON: () => ({
+//                   latitude: location.latitude || 0,
+//                   longitude: location.longitude || 0,
+//                   altitude: location.altitude || null,
+//                   accuracy: location.accuracy || 0,
+//                   altitudeAccuracy: location.altitudeAccuracy || null,
+//                   heading: location.bearing || null,
+//                   speed: location.speed || null
+//                 })
+//               },
+//               timestamp: location.time || Date.now(),
+//               toJSON: () => ({
+//                 coords: {
+//                   latitude: location.latitude || 0,
+//                   longitude: location.longitude || 0,
+//                   altitude: location.altitude || null,
+//                   accuracy: location.accuracy || 0,
+//                   altitudeAccuracy: location.altitudeAccuracy || null,
+//                   heading: location.bearing || null,
+//                   speed: location.speed || null
+//                 },
+//                 timestamp: location.time || Date.now()
+//               })
+//             };
+
+//             // Use your existing processing function - no changes needed!
+//             processLocationUpdate(mockPosition);
+//           }
+//         }
+//       );
+
+//       // Store the watcher ID so we can stop it later
+//       setBackgroundWatcherId(watcherId);
+//       console.log('✅ Background geolocation watcher started with ID:', watcherId);
+      
+//       present({
+//         message: '🌍 Background GPS tracking started! Your trip will continue tracking even when you lock your phone.',
+//         duration: 4000,
+//         color: 'success'
+//       });
+
+//     } catch (error) {
+//       console.error('❌ Failed to start background tracking:', error);
+//       setError(`Failed to start background tracking: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      
+//       // Fallback to old method if background fails
+//       console.log('🔄 Falling back to standard GPS tracking...');
+      
+//       const options = {
+//         enableHighAccuracy: true,
+//         timeout: 15000,
+//         maximumAge: 2000
+//       };
+
+//       watchIdRef.current = navigator.geolocation.watchPosition(
+//         processLocationUpdate,
+//         (error) => {
+//           console.error('GPS error:', error);
+//           setError(`GPS error: ${error.message}`);
+//           setShowAlert(true);
+//         },
+//         options
+//       );
+
+//       present({
+//         message: 'Using standard GPS tracking. Keep app open for best results.',
+//         duration: 3000,
+//         color: 'warning'
+//       });
+//     }
 //   }
 
 //   setTracking(true);
-//   console.log(`🚗 TRIP STARTED: ${tripId} (${TEST_MODE ? 'TEST' : 'REAL'} mode)`);
+//   console.log(`🚗 TRIP STARTED: ${tripId} (${TEST_MODE ? 'TEST' : 'BACKGROUND'} mode)`);
 // };
+
+
+
+
 
 
 //   const handleSignOut = () => {
@@ -2248,15 +2413,7 @@ import {
 } from '../utils/geocoding';
 import { registerPlugin } from '@capacitor/core';
 
-// Define the plugin interface for Capacitor v7
-interface BackgroundGeolocationPlugin {
-  requestPermissions(options: { permissions: string[] }): Promise<any>;
-  addWatcher(options: any, callback: (location: any, error: any) => void): Promise<string>;
-  removeWatcher(options: { id: string }): Promise<void>;
-}
-
-// Register the plugin with Capacitor v7
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation');
+import BackgroundGeolocation, { Location, Subscription } from "@transistorsoft/capacitor-background-geolocation";
 
 
 
@@ -2724,6 +2881,10 @@ const DriverHome: React.FC<DriverHomeProps> = ({ user, onSignOut }) => {
 
   const [present] = useIonToast();
   const watchIdRef = useRef<number | null>(null);
+
+
+  const bgLocationSubscription = useRef<Subscription | null>(null);
+
   
   // CRITICAL FIX: Use useRef to store trip ID to avoid React state timing issues
   const currentTripRef = useRef<string | null>(null);
@@ -2746,14 +2907,13 @@ useEffect(() => {
       navigator.geolocation.clearWatch(watchIdRef.current);
     }
     
-    // Cleanup background tracking (FIXED FOR CAPACITOR v7)
-    if (backgroundWatcherId) {
-      BackgroundGeolocation.removeWatcher({
-        id: backgroundWatcherId
-      }).catch(console.error);
+    // Cleanup professional background tracking subscription
+    if (bgLocationSubscription.current) {
+      bgLocationSubscription.current.remove();
+      bgLocationSubscription.current = null;
     }
   };
-}, [backgroundWatcherId]);
+}, []);
 
 
 
@@ -3483,292 +3643,283 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
 
   // ENHANCED: Toggle tracking with FIXED state management
   const toggleTracking = async () => {
-  // STOPPING TRIP - Handle immediately regardless of mode
-  if (tracking) {
-    console.log('🛑 IMMEDIATE STOP REQUESTED');
-    
-    // Set tracking to false immediately to prevent UI confusion
-    setTracking(false);
-    
-    // STOP BACKGROUND GEOLOCATION (FIXED FOR CAPACITOR v7)
-    if (backgroundWatcherId) {
+    // STOPPING TRIP - Handle immediately regardless of mode
+    if (tracking) {
+      console.log('🛑 IMMEDIATE STOP REQUESTED');
+      
+      // Set tracking to false immediately to prevent UI confusion
+      setTracking(false);
+      
+      // STOP BACKGROUND GEOLOCATION (TRANSISTOR SOFTWARE METHOD)
       try {
-        await BackgroundGeolocation.removeWatcher({
-          id: backgroundWatcherId
-        });
-        setBackgroundWatcherId(null);
+        if (bgLocationSubscription.current) {
+          bgLocationSubscription.current.remove();
+          bgLocationSubscription.current = null;
+        }
+        await BackgroundGeolocation.stop();
         console.log('✅ Background geolocation stopped');
       } catch (error) {
         console.error('❌ Error stopping background geolocation:', error);
       }
-    }
-    
-    // Clear any old GPS watching (fallback)
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    
-    // Stop test mode if active
-    testModeActiveRef.current = false;
+      
+      // Clear any old GPS watching (fallback)
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      
+      // Stop test mode if active
+      testModeActiveRef.current = false;
 
-    const finalTripId = currentTripRef.current || currentTrip;
-    
-    try {
-      // Upload final batch if there are remaining points
-      if (locationQueue.length > 0 && finalTripId) {
-        console.log(`📤 Uploading final batch of ${locationQueue.length} points`);
-        const finalBatchNumber = batchCountRef.current + 1;
-        batchCountRef.current = finalBatchNumber;
-        await uploadBatch(locationQueue, finalTripId, finalBatchNumber);
-        setBatchCount(finalBatchNumber);
+      const finalTripId = currentTripRef.current || currentTrip;
+      
+      try {
+        // Upload final batch if there are remaining points
+        if (locationQueue.length > 0 && finalTripId) {
+          console.log(`📤 Uploading final batch of ${locationQueue.length} points`);
+          const finalBatchNumber = batchCountRef.current + 1;
+          batchCountRef.current = finalBatchNumber;
+          await uploadBatch(locationQueue, finalTripId, finalBatchNumber);
+          setBatchCount(finalBatchNumber);
+        }
+
+        // Finalize trip
+        if (finalTripId) {
+          await finalizeTripOnServer(finalTripId);
+        }
+      } catch (error) {
+        console.error('❌ Error during trip finalization:', error);
+        present({
+          message: 'Trip stopped but finalization had issues',
+          duration: 3000,
+          color: 'warning'
+        });
       }
 
-      // Finalize trip
-      if (finalTripId) {
-        await finalizeTripOnServer(finalTripId);
-      }
-    } catch (error) {
-      console.error('❌ Error during trip finalization:', error);
+      // Reset all state AND refs
+      setLocationQueue([]);
+      setCurrentTrip(null);
+      currentTripRef.current = null;
+      setBatchCount(0);
+      batchCountRef.current = 0;
+      setTotalTripDistance(0);
+      setLastDistancePoint(null);
+      lastDistancePointRef.current = null;
+      setAllTripPoints([]);
+      
+      console.log(`🛑 TRIP STOPPED AND FINALIZED (${TEST_MODE ? 'TEST' : 'REAL'} mode)`);
+      
+      const message = TEST_MODE 
+        ? `🧪 Test completed! Check analysis results.`
+        : `Trip completed! Check your driving analysis. Total: ${totalTripDistance.toFixed(2)} miles`;
+        
       present({
-        message: 'Trip stopped but finalization had issues',
-        duration: 3000,
-        color: 'warning'
+        message,
+        duration: 4000,
+        color: 'primary'
       });
+      
+      return; // Exit early after stopping
     }
 
-    // Reset all state AND refs
+    // STARTING TRIP
+    const tripId = generateTripId();
+    
+    // CRITICAL FIX: Set trip ID in BOTH state and ref
+    setCurrentTrip(tripId);
+    currentTripRef.current = tripId;
+    
+    console.log(`🆔 TRIP ID SET: State and Ref both set to ${tripId}`);
+    
     setLocationQueue([]);
-    setCurrentTrip(null);
-    currentTripRef.current = null;
     setBatchCount(0);
-    batchCountRef.current = 0;
+    batchCountRef.current = 0; // Reset ref-based counter
+    
     setTotalTripDistance(0);
     setLastDistancePoint(null);
     lastDistancePointRef.current = null;
     setAllTripPoints([]);
     
-    console.log(`🛑 TRIP STOPPED AND FINALIZED (${TEST_MODE ? 'TEST' : 'REAL'} mode)`);
-    
-    const message = TEST_MODE 
-      ? `🧪 Test completed! Check analysis results.`
-      : `Trip completed! Check your driving analysis. Total: ${totalTripDistance.toFixed(2)} miles`;
-      
-    present({
-      message,
-      duration: 4000,
-      color: 'primary'
+    setTripQuality({
+      totalPoints: 0,
+      validPoints: 0,
+      rejectedPoints: 0,
+      averageAccuracy: 0,
+      speedDataQuality: 0,
+      stationaryPeriods: 0,
+      tripStartTime: new Date().toISOString(),
+      currentSpeed: 0,
+      maxSpeed: 0,
+      avgSpeed: 0
     });
-    
-    return; // Exit early after stopping
-  }
 
-  // STARTING TRIP
-  const tripId = generateTripId();
-  
-  // CRITICAL FIX: Set trip ID in BOTH state and ref
-  setCurrentTrip(tripId);
-  currentTripRef.current = tripId;
-  
-  console.log(`🆔 TRIP ID SET: State and Ref both set to ${tripId}`);
-  
-  setLocationQueue([]);
-  setBatchCount(0);
-  batchCountRef.current = 0; // Reset ref-based counter
-  
-  setTotalTripDistance(0);
-  setLastDistancePoint(null);
-  lastDistancePointRef.current = null;
-  setAllTripPoints([]);
-  
-  setTripQuality({
-    totalPoints: 0,
-    validPoints: 0,
-    rejectedPoints: 0,
-    averageAccuracy: 0,
-    speedDataQuality: 0,
-    stationaryPeriods: 0,
-    tripStartTime: new Date().toISOString(),
-    currentSpeed: 0,
-    maxSpeed: 0,
-    avgSpeed: 0
-  });
-
-  if (TEST_MODE) {
-    console.log('🧪 TEST MODE ENABLED - Using simulated GPS data with auto-stop');
-    
-    if (!basePoint) {
-      setError('Base point required for test mode');
-      return;
-    }
-    
-    testModeActiveRef.current = true;
-    const testData = generateTestTripData(basePoint);
-    
-    // FIXED: Pass auto-complete callback
-    const autoCompleteCallback = () => {
-      console.log('🧪 Test data completed - auto-stopping trip');
-      if (testModeActiveRef.current) {
-        testModeActiveRef.current = false;
-        // Trigger the stop functionality
-        toggleTracking();
-      }
-    };
-    
-    enableTestMode(testData, processLocationUpdate, autoCompleteCallback);
-    
-    present({
-      message: '🧪 TEST MODE: 5-minute simulated trip started! Will auto-stop when complete.',
-      duration: 4000,
-      color: 'warning'
-    });
-    
-  } else {
-    // NEW REAL MODE: Use Background Geolocation (FIXED FOR CAPACITOR v7)
-    console.log('🌍 REAL MODE: Starting BACKGROUND GPS tracking');
-    
-    try {
-      // Request permissions first (CAPACITOR v7 COMPATIBLE)
-      const permissionResult = await BackgroundGeolocation.requestPermissions({
-        permissions: ['location', 'background-location']
-      });
+    if (TEST_MODE) {
+      console.log('🧪 TEST MODE ENABLED - Using simulated GPS data with auto-stop');
       
-      if (permissionResult.location !== 'granted') {
-        throw new Error('Location permission denied');
+      if (!basePoint) {
+        setError('Base point required for test mode');
+        return;
       }
       
-      if (permissionResult['background-location'] !== 'granted') {
-        console.warn('⚠️ Background location permission not granted - tracking may be limited');
-        present({
-          message: 'For best results, please enable "Always" location permission in Settings.',
-          duration: 6000,
-          color: 'warning'
-        });
-      } else {
-        console.log('✅ Background location permission granted');
-      }
-
-      // Start background geolocation tracking (CAPACITOR v7 COMPATIBLE)
-      const watcherId = await BackgroundGeolocation.addWatcher(
-        {
-          id: `privacy-drive-${Date.now()}`, // Unique ID for this trip
-          requestPermissions: true,
-          stale: false,
-          distanceFilter: 1, // Update every 1 meter of movement
-          interval: 1000,    // Check every 1 second
-          backgroundMessage: "Privacy Drive is analyzing your driving behavior while protecting your location privacy.",
-          backgroundTitle: "Privacy Drive - Trip Active",
-          // Critical settings for background operation
-          enableBackground: true,
-          // iOS specific settings
-          pausesLocationUpdatesAutomatically: false,
-          allowsBackgroundLocationUpdates: true,
-          // Android specific settings  
-          enableHighAccuracy: true,
-          notificationTitle: "Privacy Drive Active",
-          notificationText: "Tracking trip with privacy protection"
-        },
-        (location: BackgroundLocation | null, error: BackgroundLocationError | null) => {
-          if (error) {
-            console.error('❌ Background location error:', error);
-            setError(`Background GPS error: ${error.message}`);
-            return;
-          }
-
-          if (location) {
-            console.log('📍 BACKGROUND LOCATION UPDATE:', {
-              lat: location.latitude?.toFixed(6),
-              lon: location.longitude?.toFixed(6),
-              accuracy: location.accuracy?.toFixed(1),
-              speed: location.speed ? (location.speed * 2.237).toFixed(1) : 'N/A',
-              time: new Date(location.time || Date.now()).toLocaleTimeString()
-            });
-
-            // Convert Capacitor location to GeolocationPosition format
-            const mockPosition: GeolocationPosition = {
-              coords: {
-                latitude: location.latitude || 0,
-                longitude: location.longitude || 0,
-                altitude: location.altitude || null,
-                accuracy: location.accuracy || 0,
-                altitudeAccuracy: location.altitudeAccuracy || null,
-                heading: location.bearing || null,
-                speed: location.speed || null,
-                toJSON: () => ({
-                  latitude: location.latitude || 0,
-                  longitude: location.longitude || 0,
-                  altitude: location.altitude || null,
-                  accuracy: location.accuracy || 0,
-                  altitudeAccuracy: location.altitudeAccuracy || null,
-                  heading: location.bearing || null,
-                  speed: location.speed || null
-                })
-              },
-              timestamp: location.time || Date.now(),
-              toJSON: () => ({
-                coords: {
-                  latitude: location.latitude || 0,
-                  longitude: location.longitude || 0,
-                  altitude: location.altitude || null,
-                  accuracy: location.accuracy || 0,
-                  altitudeAccuracy: location.altitudeAccuracy || null,
-                  heading: location.bearing || null,
-                  speed: location.speed || null
-                },
-                timestamp: location.time || Date.now()
-              })
-            };
-
-            // Use your existing processing function - no changes needed!
-            processLocationUpdate(mockPosition);
-          }
+      testModeActiveRef.current = true;
+      const testData = generateTestTripData(basePoint);
+      
+      // FIXED: Pass auto-complete callback
+      const autoCompleteCallback = () => {
+        console.log('🧪 Test data completed - auto-stopping trip');
+        if (testModeActiveRef.current) {
+          testModeActiveRef.current = false;
+          // Trigger the stop functionality
+          toggleTracking();
         }
-      );
-
-      // Store the watcher ID so we can stop it later
-      setBackgroundWatcherId(watcherId);
-      console.log('✅ Background geolocation watcher started with ID:', watcherId);
-      
-      present({
-        message: '🌍 Background GPS tracking started! Your trip will continue tracking even when you lock your phone.',
-        duration: 4000,
-        color: 'success'
-      });
-
-    } catch (error) {
-      console.error('❌ Failed to start background tracking:', error);
-      setError(`Failed to start background tracking: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      
-      // Fallback to old method if background fails
-      console.log('🔄 Falling back to standard GPS tracking...');
-      
-      const options = {
-        enableHighAccuracy: true,
-        timeout: 15000,
-        maximumAge: 2000
       };
-
-      watchIdRef.current = navigator.geolocation.watchPosition(
-        processLocationUpdate,
-        (error) => {
-          console.error('GPS error:', error);
-          setError(`GPS error: ${error.message}`);
-          setShowAlert(true);
-        },
-        options
-      );
-
+      
+      enableTestMode(testData, processLocationUpdate, autoCompleteCallback);
+      
       present({
-        message: 'Using standard GPS tracking. Keep app open for best results.',
-        duration: 3000,
+        message: '🧪 TEST MODE: 5-minute simulated trip started! Will auto-stop when complete.',
+        duration: 4000,
         color: 'warning'
       });
-    }
-  }
+      
+    } else {
+      // NEW REAL MODE: Use Transistor Software Background Geolocation (FREE FOR TESTFLIGHT)
+      console.log('🌍 REAL MODE: Starting PROFESSIONAL BACKGROUND GPS tracking');
+      
+      try {
+        // Set up location event listener FIRST
+        bgLocationSubscription.current = BackgroundGeolocation.onLocation((location: Location) => {
+          console.log('📍 BACKGROUND LOCATION UPDATE:', {
+            lat: location.coords.latitude?.toFixed(6),
+            lon: location.coords.longitude?.toFixed(6),
+            accuracy: location.coords.accuracy?.toFixed(1),
+            speed: location.coords.speed ? (location.coords.speed * 2.237).toFixed(1) : 'N/A',
+            time: new Date(location.timestamp).toLocaleTimeString()
+          });
 
-  setTracking(true);
-  console.log(`🚗 TRIP STARTED: ${tripId} (${TEST_MODE ? 'TEST' : 'BACKGROUND'} mode)`);
-};
+          // Convert to GeolocationPosition format that your existing code expects
+          const mockPosition: GeolocationPosition = {
+            coords: {
+              latitude: location.coords.latitude,
+              longitude: location.coords.longitude,
+              altitude: location.coords.altitude ?? null,
+              accuracy: location.coords.accuracy,
+              altitudeAccuracy: location.coords.altitude_accuracy ?? null,
+              heading: location.coords.heading ?? null,
+              speed: location.coords.speed ?? null,
+              toJSON: () => ({
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                altitude: location.coords.altitude ?? null,
+                accuracy: location.coords.accuracy,
+                altitudeAccuracy: location.coords.altitude_accuracy ?? null,
+                heading: location.coords.heading ?? null,
+                speed: location.coords.speed ?? null
+              })
+            },
+            timestamp: Date.parse(location.timestamp),
+            toJSON: () => ({
+              coords: {
+                latitude: location.coords.latitude,
+                longitude: location.coords.longitude,
+                altitude: location.coords.altitude ?? null,
+                accuracy: location.coords.accuracy,
+                altitudeAccuracy: location.coords.altitude_accuracy ?? null,
+                heading: location.coords.heading ?? null,
+                speed: location.coords.speed ?? null
+              },
+              timestamp: Date.parse(location.timestamp)
+            })
+          };
+
+          // Use your existing processing function - no changes needed!
+          processLocationUpdate(mockPosition);
+        }, (error) => {
+          console.error('❌ Background location error:', error);
+          // Handle different error types from Transistor plugin
+          const errorMessage = typeof error === 'object' && error !== null 
+            ? (error as any).message || 'Unknown background location error'
+            : String(error);
+          setError(`Background GPS error: ${errorMessage}`);
+        });
+
+        // Configure and start the background geolocation
+        await BackgroundGeolocation.ready({
+          // Geolocation Config
+          desiredAccuracy: BackgroundGeolocation.DESIRED_ACCURACY_HIGH,
+          distanceFilter: 3, // meters - update every 3 meters of movement
+          stationaryRadius: 25, // meters
+          
+          // Activity Recognition
+          stopTimeout: 5, // minutes
+          
+          // Application config
+          debug: false, // Set to false for TestFlight
+          logLevel: BackgroundGeolocation.LOG_LEVEL_OFF, // Disable logs for TestFlight
+          stopOnTerminate: false, // Allow the background-service to continue tracking when user closes the app
+          startOnBoot: true, // Auto start tracking when device is powered-up
+          
+          // iOS specific
+          preventSuspend: true, // CRITICAL: This keeps your app alive in background
+          pausesLocationUpdatesAutomatically: false,
+          locationAuthorizationRequest: 'Always',
+          
+          // HTTP / Persistence - Disabled since you handle uploads yourself
+          autoSync: false,
+          autoSyncThreshold: 0,
+          
+          // Background notification
+          notification: {
+            title: "Privacy Drive Active",
+            text: "Analyzing driving behavior with location privacy protection"
+          }
+        });
+
+        // Start tracking
+        await BackgroundGeolocation.start();
+        
+        console.log('✅ Professional background geolocation started');
+        
+        present({
+          message: '🌍 Professional background GPS tracking started! Works even when phone is locked.',
+          duration: 4000,
+          color: 'success'
+        });
+
+      } catch (error) {
+        console.error('❌ Failed to start professional background tracking:', error);
+        setError(`Failed to start background tracking: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        
+        // Fallback to standard GPS if professional plugin fails
+        console.log('🔄 Falling back to standard GPS tracking...');
+        
+        const options = {
+          enableHighAccuracy: true,
+          timeout: 15000,
+          maximumAge: 2000
+        };
+
+        watchIdRef.current = navigator.geolocation.watchPosition(
+          processLocationUpdate,
+          (error) => {
+            console.error('GPS error:', error);
+            setError(`GPS error: ${error.message}`);
+            setShowAlert(true);
+          },
+          options
+        );
+
+        present({
+          message: 'Using standard GPS tracking. Keep app open for best results.',
+          duration: 3000,
+          color: 'warning'
+        });
+      }
+    }
+
+    setTracking(true);
+    console.log(`🚗 TRIP STARTED: ${tripId} (${TEST_MODE ? 'TEST' : 'PROFESSIONAL_BACKGROUND'} mode)`);
+  };
 
 
 
@@ -3849,7 +4000,7 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
             border: '1px solid #e9ecef'
           }}>
             <h2 style={{ margin: '0 0 8px 0', color: '#2c3e50', fontSize: '1.5rem', fontWeight: '600' }}>
-              🚗 Privacy-Protected Driving Analysis
+              Privacy-Protected Driving Analysis
             </h2>
             <p style={{ margin: '0', color: '#6c757d', fontSize: '1rem' }}>
               Test your driving behavior with real GPS data. Your exact location is never stored - only encrypted movement patterns for insurance analysis.
@@ -3962,13 +4113,13 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
                 color: '#6c757d',
                 textAlign: 'center'
               }}>
-                <p style={{ margin: '0 0 8px 0', fontWeight: '500', color: '#495057' }}>
+                {/* <p style={{ margin: '0 0 8px 0', fontWeight: '500', color: '#495057' }}>
                   📱 Testing Instructions
                 </p>
                 <p style={{ margin: '0' }}>
                   Start tracking before driving. The app analyzes speed consistency, acceleration patterns, 
                   and turning behavior while protecting your privacy through location anonymization.
-                </p>
+                </p> */}
               </div>
             )}
           </div>
@@ -3993,7 +4144,7 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
                   animation: 'pulse 2s infinite'
                 }}></div>
                 <h3 style={{ margin: '0', color: '#28a745', fontSize: '1.2rem', fontWeight: '600' }}>
-                  🚗 Trip Active - {currentTrip?.slice(-8)}
+                  Trip Active - {currentTrip?.slice(-8)}
                 </h3>
               </div>
 
@@ -4053,7 +4204,7 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
             </div>
           )}
 
-          {/* Testing Scenarios */}
+          {/* Testing Scenarios
           <div style={{
             backgroundColor: 'white',
             borderRadius: '12px',
@@ -4114,7 +4265,7 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
               <IonIcon icon={informationCircle} style={{ marginRight: '6px' }} />
               <strong>Tip:</strong> Drive for at least 2-3 minutes to generate enough data for accurate analysis.
             </div>
-          </div>
+          </div> */}
 
         </div>
 
@@ -4566,7 +4717,6 @@ const processLocationUpdate = async (position: GeolocationPosition) => {
                   </div>
                 </div>
               )}
-
             </div>
           </IonContent>
         </IonModal>

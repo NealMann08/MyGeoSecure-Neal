@@ -21,6 +21,8 @@
     "@ionic/pwa-elements": "^3.3.0",
     "@ionic/react": "^8.5.0",
     "@ionic/react-router": "^8.5.0",
+    "@transistorsoft/capacitor-background-fetch": "^7.1.0",
+    "@transistorsoft/capacitor-background-geolocation": "^7.1.0",
     "@types/react-router": "^5.1.20",
     "@types/react-router-dom": "^5.3.3",
     "ionicons": "^8.0.9",
